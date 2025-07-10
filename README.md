@@ -43,4 +43,8 @@ Portföy sayfasını yerel makinenizde görüntülemek için:
 3.  Sol menüden **Pages**'ı seçin.
 4.  **Build and deployment** altında, **Source** olarak **Deploy from a branch** seçeneğini işaretleyin.
 5.  **Branch** olarak `main` (veya `master`) branch'inizi ve `/(root)` klasörünü seçip **Save**'e tıklayın.
-6.  Birkaç dakika içinde sayfanız `https://<kullanici_adiniz>.github.io/<repo_adiniz>/` adresinde canlıya alınacaktır. 
+6.  Birkaç dakika içinde sayfanız `https://<kullanici_adiniz>.github.io/<repo_adiniz>/` adresinde canlıya alınacaktır.
+
+## 👥 Contributors
+
+- **Mehmet Can Özen** - Contributor 

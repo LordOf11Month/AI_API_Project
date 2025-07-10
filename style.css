@@ -1,12 +1,13 @@
-@import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap');
 
 :root {
-    --primary-color: #2c3e50;
-    --secondary-color: #3498db;
-    --background-color: #ecf0f1;
-    --font-color: #34495e;
-    --light-color: #ffffff;
-    --shadow: 0 4px 8px rgba(0,0,0,0.1);
+    --primary-color: #0ea5e9; /* Bright Blue Accent */
+    --background-color: #0f172a; /* Dark Slate Blue */
+    --surface-color: rgba(30, 41, 59, 0.75); /* Semi-transparent dark surface */
+    --font-color: #e2e8f0; /* Light Slate Gray */
+    --heading-color: #ffffff;
+    --border-color: rgba(14, 165, 233, 0.3);
+    --shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
 }
 
 * {
@@ -16,68 +17,102 @@
 }
 
 body {
-    font-family: 'Roboto', sans-serif;
+    font-family: 'Poppins', sans-serif;
     background-color: var(--background-color);
     color: var(--font-color);
-    line-height: 1.6;
+    line-height: 1.8;
+    background-image: radial-gradient(circle at 1% 1%, var(--primary-color), rgba(14, 165, 233, 0) 25%);
+    background-attachment: fixed;
 }
 
 header {
-    background-color: var(--primary-color);
-    color: var(--light-color);
-    padding: 2rem 0;
+    background: transparent;
+    padding: 3rem 1rem;
     text-align: center;
-    border-bottom: 5px solid var(--secondary-color);
 }
 
 header h1 {
-    font-size: 2.5rem;
-    margin-bottom: 0.5rem;
+    font-size: 3.5rem;
+    font-weight: 700;
+    color: var(--heading-color);
+    text-shadow: 0 0 15px rgba(14, 165, 233, 0.5);
 }
 
+header p {
+    font-size: 1.2rem;
+    color: var(--primary-color);
+    font-weight: 300;
+}
+
+
 main {
-    max-width: 960px;
+    max-width: 1100px;
     margin: 2rem auto;
     padding: 0 1rem;
     display: grid;
-    gap: 2rem;
+    gap: 2.5rem;
 }
 
 section {
-    background: var(--light-color);
-    padding: 2rem;
-    border-radius: 8px;
+    background: var(--surface-color);
+    padding: 2.5rem;
+    border-radius: 16px;
     box-shadow: var(--shadow);
-    transition: transform 0.3s ease;
+    border: 1px solid var(--border-color);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
 section:hover {
-    transform: translateY(-5px);
+    transform: translateY(-10px);
+    box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.5);
+    border-color: rgba(14, 165, 233, 0.6);
 }
 
 h2 {
-    color: var(--primary-color);
-    border-bottom: 2px solid var(--secondary-color);
-    padding-bottom: 0.5rem;
-    margin-bottom: 1rem;
+    color: var(--heading-color);
+    font-size: 2rem;
+    font-weight: 600;
+    margin-bottom: 1.5rem;
+    position: relative;
+    display: inline-block;
 }
+
+h2::after {
+    content: '';
+    position: absolute;
+    bottom: -8px;
+    left: 0;
+    width: 50%;
+    height: 3px;
+    background: var(--primary-color);
+    border-radius: 2px;
+}
+
 
 ul {
     list-style: none;
 }
 
 ul li {
-    background: #fdfdfd;
+    background: transparent;
     padding: 0.75rem;
     margin-bottom: 0.5rem;
-    border-left: 4px solid var(--secondary-color);
+    border-left: 3px solid var(--primary-color);
+    transition: background-color 0.3s, transform 0.3s;
+}
+
+ul li:hover {
+    background-color: rgba(14, 165, 233, 0.1);
+    transform: translateX(5px);
 }
 
 .tech-icons {
     display: flex;
     justify-content: center;
     align-items: center;
-    gap: 2rem;
+    gap: 2.5rem;
     flex-wrap: wrap;
     padding: 1rem 0;
 }
@@ -90,57 +125,103 @@ ul li {
 .icon img {
     width: 64px;
     height: 64px;
-    transition: transform 0.3s ease;
+    transition: transform 0.3s ease, filter 0.3s ease;
+    filter: grayscale(50%) opacity(0.8);
+}
+
+.icon img[alt="OpenAI"] {
+    filter: grayscale(50%) opacity(0.8) invert(1);
+} 
+
+.icon img.hf-logo {
+    filter: grayscale(50%) opacity(0.8);
 }
 
 .icon:hover img {
     transform: scale(1.1);
+    filter: grayscale(0%) opacity(1);
 }
 
-.icon::after {
-    content: attr(data-text);
+.icon:hover img[alt="OpenAI"]{
+    filter: grayscale(0%) opacity(1) invert(1);
+}
+.icon:hover img.hf-logo {
+    filter: grayscale(0%) opacity(1) ;
+}
+
+.icon .tooltip {
     position: absolute;
-    bottom: -25px;
+    bottom: -35px;
     left: 50%;
     transform: translateX(-50%);
     background: var(--primary-color);
-    color: var(--light-color);
-    padding: 2px 8px;
+    color: var(--background-color);
+    padding: 4px 10px;
     border-radius: 4px;
-    font-size: 0.8rem;
+    font-size: 0.85rem;
+    font-weight: 600;
     opacity: 0;
-    transition: opacity 0.3s ease;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
     white-space: nowrap;
+    z-index: 10;
 }
 
-.icon:hover::after {
+.icon:hover .tooltip {
     opacity: 1;
+    visibility: visible;
 }
+
 
 .btn {
     display: inline-block;
-    background-color: var(--secondary-color);
-    color: var(--light-color);
-    padding: 0.8rem 1.5rem;
+    background: var(--primary-color);
+    color: #fff;
+    padding: 0.8rem 2rem;
     text-decoration: none;
-    border-radius: 5px;
-    font-weight: bold;
-    transition: background-color 0.3s ease;
+    border-radius: 50px;
+    font-weight: 600;
+    transition: background-color 0.3s ease, transform 0.3s ease, box-shadow 0.3s ease;
+    border: none;
+    box-shadow: 0 4px 15px rgba(14, 165, 233, 0.4);
 }
 
 .btn:hover {
-    background-color: #2980b9;
+    transform: translateY(-3px);
+    box-shadow: 0 7px 20px rgba(14, 165, 233, 0.6);
 }
 
 .btn.disabled {
-    background-color: #95a5a6;
+    background: #475569; /* Slate 600 */
     cursor: not-allowed;
+    box-shadow: none;
+}
+
+.btn.disabled:hover {
+    transform: translateY(0);
+    box-shadow: none;
+}
+
+.demo-buttons {
+    margin-top: 1.5rem;
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    flex-wrap: wrap;
 }
 
 footer {
     text-align: center;
-    padding: 1.5rem 0;
-    background-color: var(--primary-color);
-    color: var(--light-color);
-    margin-top: 2rem;
+    padding: 2rem 0;
+    background: transparent;
+    color: var(--font-color);
+    margin-top: 3rem;
+    font-size: 1.5rem;
+
+    a {
+        color: var(--primary-color);
+        text-decoration: none;
+        font-weight: 600;
+        
+    }
 } 

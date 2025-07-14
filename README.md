@@ -1,46 +1,68 @@
-# AI API Projesi
+# Stilometri Sayacı (Yazarlık Benzerlik Analizörü)
 
-Bu repo, görsel tanıma ve metin analizi üzerine geliştirilen "AI API Projesi"nin portföy sayfasını içermektedir.
+Bu proje, iki metin arasındaki yazım stilini karşılaştırarak aynı yazar tarafından yazılıp yazılmadığını analiz eden bir stilometri aracıdır.
 
-## 🚀 Proje Hakkında
+## 🔍 Temel Özellikler (MVP)
 
-Bu proje, [OpenAI](https://openai.com/) ve [Hugging Face](https://huggingface.co/) gibi güçlü yapay zeka API'lerini kullanarak görsel tanıma ve metin analizi yeteneklerine sahip bir web uygulaması geliştirmeyi amaçlamaktadır. Projenin altyapısı [Node.js](https://nodejs.org/) üzerinde çalışacaktır.
+Projenin ilk sürümü (Minimum Viable Product) aşağıdaki temel yeteneklere sahip olacaktır:
 
-## ✨ Portföy Sayfası
+-   **Girdi:** Karşılaştırılacak iki farklı metin (örnek: iki ayrı blog yazısı, makale veya e-posta).
+-   **Çıktı:**
+    -   **Benzerlik Skoru:** Metinlerin stilistik olarak ne kadar benzediğini gösteren 0 ile 1 arasında bir skor.
+    -   **Yazarlık Olasılığı:** Analiz sonucunda metinlerin aynı yazar tarafından yazılmış olma ihtimalini yüzde (%) olarak gösteren bir değer.
+    -   **Analiz Edilen Özellikler:** Skorun hesaplanmasında kullanılan metriklerin dökümü (örneğin: kelime çeşitliliği, ortalama cümle uzunluğu, n-gram sıklığı vb.).
 
-Bu repodaki `index.html`, `style.css` ve `script.js` dosyaları, projenin amacını, özelliklerini ve kullanılacak teknolojileri tanıtan modern bir web sayfası oluşturur.
+## ⚙️ Teknik Stack
 
-### Canlı Demo
+Proje, modern ve etkili teknolojiler kullanılarak geliştirilecektir:
 
-Bu portföy sayfası, GitHub Pages üzerinden kolayca yayınlanabilir ve projeniz için bir vitrin görevi görebilir.
+| Bileşen            | Teknoloji Seçenekleri                                                              |
+| ------------------ | ---------------------------------------------------------------------------------- |
+| **Backend**        | Node.js + Express. Gerekirse Python tabanlı analiz modeli bir Flask API ile sarmalanabilir. |
+| **Analiz Algoritması** | - **İstatistiksel:** TF-IDF, N-gram, Zipf Yasası.<br>- **AI Tabanlı:** `bert-base-turkish` embedding + Cosine Similarity. |
+| **API Entegrasyonu** | Swagger UI kullanılarak interaktif ve anlaşılır API dokümantasyonu sağlanacaktır. |
 
-## 🛠️ Kullanılan Teknolojiler
+## 📂 Dosya Yapısı
 
--   **Frontend:** HTML5, CSS3, JavaScript
--   **Backend (Planlanan):** Node.js
--   **AI Servisleri (Planlanan):**
-    -   OpenAI API
-    -   Hugging Face API
+Projenin GitHub reposu aşağıdaki gibi organize edilecektir:
 
-## ⚙️ Kurulum
+```plaintext
+/stilometri-sayaci
+├── /backend          # Node.js API katmanı
+│   ├── app.js        # API rotaları ve Express sunucusu
+│   └── /utils        # Analiz fonksiyonları ve yardımcı modüller
+├── /model            # Python tabanlı analiz motoru
+│   ├── feature_extraction.py   # Metinlerden özellik çıkaran script
+│   └── similarity_calculator.py # Benzerlik skorunu hesaplayan script
+└── README.md         # Proje özellikleri ve kurulum talimatları
+```
 
-Portföy sayfasını yerel makinenizde görüntülemek için:
+## 🚀 Adım Adım Geliştirme Planı
 
-1.  Bu repoyu klonlayın:
-    ```bash
-    git clone https://github.com/kullanici_adiniz/repo_adiniz.git
+1.  **Veri Toplama:**
+    -   Modeli test etmek ve doğruluğunu ölçmek için Kaggle gibi platformlardan İngilizce veya Türkçe yazar verisetleri bulunacaktır (örnek: [CCAT50 Turkish News Text Classification](https://www.kaggle.com/datasets/savasy/ccat50-turkish-news-text-classification)).
+
+2.  **Model Prototipi Geliştirme:**
+    -   Yazarlık stilini temsil eden anlamsal vektörler (embeddings) oluşturmak için `sentence-transformers` ve Türkçe BERT modeli kullanılacaktır.
+    -   İki metnin embedding'leri arasındaki benzerlik, Cosine Similarity ile ölçülecektir.
+
+    ```python
+    # Örnek: Cosine Similarity ile embedding karşılaştırma
+    from sentence_transformers import SentenceTransformer
+    import numpy as np
+
+    # Modeli yükle
+    model = SentenceTransformer('emrecan/bert-base-turkish-cased')
+
+    # Metinleri vektörlere dönüştür
+    embedding1 = model.encode("Merhaba dünya!")
+    embedding2 = model.encode("Selam gezegen!")
+
+    # Cosine similarity hesapla
+    similarity = np.dot(embedding1, embedding2) / (np.linalg.norm(embedding1) * np.linalg.norm(embedding2))
+
+    print(f"Benzerlik Skoru: {similarity}")
     ```
-2.  Proje klasörüne gidin:
-    ```bash
-    cd repo_adiniz
-    ```
-3.  `index.html` dosyasını favori web tarayıcınızda açmanız yeterlidir.
 
-## 🌐 GitHub Pages ile Yayınlama
-
-1.  Bu dosyaları kendi GitHub reponuza yükleyin.
-2.  Reponuzun **Settings** sekmesine gidin.
-3.  Sol menüden **Pages**'ı seçin.
-4.  **Build and deployment** altında, **Source** olarak **Deploy from a branch** seçeneğini işaretleyin.
-5.  **Branch** olarak `main` (veya `master`) branch'inizi ve `/(root)` klasörünü seçip **Save**'e tıklayın.
-6.  Birkaç dakika içinde sayfanız `https://<kullanici_adiniz>.github.io/<repo_adiniz>/` adresinde canlıya alınacaktır. 
+3.  **API Entegrasyonu:**
+    -   Node.js tabanlı ana backend, analiz işlemleri için Python ile geliştirilen modele (Flask API üzerinden) HTTP istekleri göndererek haberleşecektir. Bu sayede iki dilin de güçlü yanları bir arada kullanılacaktır. 

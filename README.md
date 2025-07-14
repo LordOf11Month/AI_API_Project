@@ -63,6 +63,19 @@ Projenin GitHub reposu aşağıdaki gibi organize edilecektir:
 
     print(f"Benzerlik Skoru: {similarity}")
     ```
-
+=======
 3.  **API Entegrasyonu:**
     -   Node.js tabanlı ana backend, analiz işlemleri için Python ile geliştirilen modele (Flask API üzerinden) HTTP istekleri göndererek haberleşecektir. Bu sayede iki dilin de güçlü yanları bir arada kullanılacaktır. 
+
+
+
+1.  Bu dosyaları kendi GitHub reponuza yükleyin.
+2.  Reponuzun **Settings** sekmesine gidin.
+3.  Sol menüden **Pages**'ı seçin.
+4.  **Build and deployment** altında, **Source** olarak **Deploy from a branch** seçeneğini işaretleyin.
+5.  **Branch** olarak `main` (veya `master`) branch'inizi ve `/(root)` klasörünü seçip **Save**'e tıklayın.
+6.  Birkaç dakika içinde sayfanız `https://<kullanici_adiniz>.github.io/<repo_adiniz>/` adresinde canlıya alınacaktır.
+
+## 👥 Contributors
+
+- **Mehmet Can Özen** - Contributor 

@@ -27,7 +27,7 @@ Proje, modern ve etkili teknolojiler kullanılarak geliştirilecektir:
 Projenin GitHub reposu aşağıdaki gibi organize edilecektir:
 
 ```plaintext
-/stilometri-sayaci
+/src
 ├── /backend          # Node.js API katmanı
 │   ├── app.js        # API rotaları ve Express sunucusu
 │   └── /utils        # Analiz fonksiyonları ve yardımcı modüller

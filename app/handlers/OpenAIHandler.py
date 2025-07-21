@@ -1,0 +1,25 @@
+from abc import ABC, abstractmethod
+from typing import Union, AsyncIterable, Dict, Any, Optional
+from openai import OpenAI
+from app.handlers.BaseHandler import BaseHandler
+
+class OpenAIHandler(BaseHandler):
+    """
+    An abstract base class for AI model handlers. It defines a common interface
+    for handling generation requests.
+    """
+    def __init__(self, model_name: str, generation_config: Dict[str, Any], system_instruction: Optional[str]):
+        self.model_name = model_name
+        self.generation_config = generation_config
+        self.system_instruction = system_instruction
+
+    @abstractmethod
+    async def handle(self, prompt: str, stream: bool = False) -> Union[str, AsyncIterable[str]]:
+        """
+        Processes a prompt and returns the model's response.
+
+        This method must be implemented by subclasses.
+        """
+        pass
+    
+    

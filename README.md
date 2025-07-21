@@ -4,70 +4,78 @@
 
 ## 🌐 Overview
 
-The **AI API Center** allows developers and enterprises to create domain-specific AI agents (chatbots, assistants, analysts, etc.) with customizable model parameters, system prompts, and external tool integrations. Designed to support industries like **banking, healthcare, hospitality, and retail**, the platform acts as a middle layer for orchestrating language models with real-world data and functions.
+AI API Center is a unified backend service for handling AI model interactions in enterprise environments. It abstracts multiple LLM APIs (OpenAI, DeepSeek, Gemini, etc.) into a single, configurable interface.
 
 ---
 
-## 🧩 Key Features
+🔑 Key Features
 
-- ✅ **Model Selection**  
-  Supports multiple AI providers (OpenAI, Google, DeepSeek, Anthropic, etc.) with flexible parameter schemas per model.
+    ⚡ Multi-Model Routing
+    Dynamically routes user prompts to the selected LLM backend (e.g., OpenAI, Anthropic, Google Gemini) via clean abstraction layers.
 
-- ✅ **Custom RAG (Retrieval-Augmented Generation)**  
-  Plug-and-play RAG pipelines tailored to industries like:
-  - Hotel pricing engines
-  - Medical record lookups
-  - Internal knowledge bases
+    📡 Streaming Output Support
+    Low-latency, token-by-token streaming via SSE (Server-Sent Events) for real-time UI response in chat apps.
 
-- ✅ **Agent Builder**  
-  Create fully modular agents:
-  - Define model, tools, system prompt, RAG config, memory, etc.
-  - Expose agents via REST API or embeddable chat widgets.
+    🧾 Logging Layer
+    Full prompt-response capture including metadata (timestamp, model, API key owner, etc.) for observability and auditing.
 
-- ✅ **System Prompt Generalizer**  
-  Guided prompt writing assistant with prebuilt templates and prompt testing.
+    🛡️ API Key Authentication
+    Clients authenticate with individual API keys. Unauthorized requests are blocked automatically.
 
-- ✅ **Webhook & Tool Integrations**  
-  Connect agents to live APIs with configurable tools:
-  - Bookings
-  - Payments
-  - Real-time lookups
-  - CRM actions
+    🧠 System Prompt Control
+    Configure per-session system prompts to steer chatbot behavior. This enables contextually aware agents with domain-specific tone and instruction logic.
 
-- ✅ **Logging & Analytics UI**  
-  View prompt-response history, tool usage, model latency, and token consumption per agent or user.
+🧱 System Architecture
 
----
+        ┌─────────────────────────────┐
+        │        Client App           │
+        │    (e.g., Hotel Chatbot)    │
+        └────────────┬────────────────┘
+                     │ REST API (w/ streaming)
+                     ▼
+      ┌─────────────────────────────────────┐
+      │          Controller Layer           │
+      │ - Auth (API Key)                    │
+      │ - Stream handling (SSE)             │
+      └────────────────┬────────────────────┘
+                       ▼
+      ┌─────────────────────────────────────┐
+      │         Model Router Layer          │
+      │ - Dispatch to LLM provider          │
+      │ - Load-balancing, failover ready    │
+      └────┬────────────┬────────────┬──────┘
+           ▼            ▼            ▼
+   ┌────────────┐ ┌────────────┐ ┌────────────┐
+   │ GPTHandler │ │ ClaudeHandler │ │ GeminiHandler │
+   └────┬───────┘ └────┬────────┘ └────┬────────┘
+        ▼              ▼               ▼
+   ┌──────────┐   ┌────────────┐   ┌────────────┐
+   │ OpenAI   │   │ Anthropic  │   │ Google AI  │
+   │ API      │   │ API        │   │ API        │
+   └──────────┘   └────────────┘   └────────────┘
 
-## 🏗️ Tech Stack
+🏗️ Project Structure
 
-| Component       | Stack                        |
-|----------------|------------------------------|
-| **Backend**     | Node.js (Express or Fastify) |
-| **Optional**    | Python (microservice for advanced model logic, if needed) |
-| **Frontend**    | React (dashboard & widget UI) |
-| **Vector DB**   | Pinecone / Weaviate / FAISS  |
-| **LLM APIs**    | OpenAI, Google Gemini, DeepSeek, etc. |
-| **Auth**        | JWT / API Keys per client    |
-| **Database**    | PostgreSQL / Supabase        |
-
----
-
-## 📦 Project Structure (Planned)
-
-```bash
 ai-api-center/
-├── backend/                # Node.js server
-│   ├── models/             # Agent, Tool, RAG, Model Configs
-│   ├── routes/             # API endpoints
-│   ├── services/           # Agent execution logic
-│   ├── logs/               # Prompt/response logging
-│   └── config/             # Environment, vendors
-├── frontend/               # React admin + embed UI
-├── docs/                   # OpenAPI spec, architecture diagrams
-├── scripts/                # Dev utilities
+├── app/                     # Main FastAPI app
+│   ├── routers/             # API routes
+│   ├── handlers/            # Claude, GPT, Gemini integration
+│   ├── auth/                # API key auth middleware
+│   ├── core/                # Model router, system prompt logic
+│   ├── logging/             # Central logging utilities
+│   └── config/              # Provider keys, system settings
+├── tests/                   # Unit & integration tests
+├── requirements.txt         # Python deps
 └── README.md
 
+## 🛠️ Tech Stack
+
+| Component     | Technology                                      |
+|---------------|--------------------------------------------------|
+| **Backend**   | Python (FastAPI or Starlette)                   |
+| **Auth**      | JWT (PyJWT), OAuth-ready                        |
+| **LLM APIs**  | OpenAI, DeepSeek, Gemini, Claude, etc.          |
+| **Logging DB**| PostgreSQL / SQLite                             |
 
 ## 👥 Contributors
 

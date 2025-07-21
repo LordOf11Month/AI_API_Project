@@ -7,9 +7,12 @@ from typing import AsyncIterable
 from contextlib import asynccontextmanager
 
 from app.routers.Dispacther import dispatch_request, APIRequest
+from app.handlers.GoogleHandler import GoogleHandler
+from app.handlers.OpenAIHandler import OpenAIHandler
 
 # Load environment variables from a .env file if it exists
 load_dotenv()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -24,6 +27,10 @@ async def lifespan(app: FastAPI):
     yield
     # Add any cleanup code here, to be run on shutdown.
 
+
+
+
+
 app = FastAPI(
     title="Unified AI API",
     description="An API to interact with multiple AI providers.",
@@ -31,12 +38,9 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-@app.get("/")
-async def health_check():
-    """
-    A simple health check endpoint to confirm the server is running.
-    """
-    return {"status": "ok"}
+
+
+
 
 @app.post("/api/generate")
 async def generate(request: APIRequest):
@@ -65,3 +69,16 @@ async def generate(request: APIRequest):
         # A general catch-all for other unexpected errors during the process
         print(f"An internal error occurred: {e}")
         raise HTTPException(status_code=500, detail=f"An internal error occurred: {str(e)}")
+
+
+@app.get("/api/models/{provider}")
+async def get_models(provider: str):
+    """
+    Get available models for a specific provider.
+    """
+    if provider.lower() == "google":
+        return {"models": GoogleHandler.get_models()}
+    elif provider.lower() == "openai":
+        return {"models": OpenAIHandler.get_models()}
+    else:
+        raise HTTPException(status_code=400, detail=f"Provider '{provider}' not supported")

@@ -20,9 +20,11 @@ class BaseHandler(ABC):
         """
         pass
 
+    @staticmethod
     @abstractmethod
-    def get_models(self) -> list[str]:
+    def get_models() -> list[str]:
         """
-        Returns a list of models supported by the handler.
+        Returns a list of available models for this provider.
+        This should be implemented as a static method by subclasses.
         """
         pass

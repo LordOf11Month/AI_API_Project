@@ -27,3 +27,7 @@ curl -N -X 'POST' \
         "temperature": 0.8
     }
 }'
+
+curl -X 'GET' \
+  'http://127.0.0.1:8000/api/models/google' \
+  -H 'accept: application/json'

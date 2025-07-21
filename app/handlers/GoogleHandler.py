@@ -5,6 +5,10 @@ from app.handlers.BaseHandler import BaseHandler
 # NOTE: It's recommended to call genai.configure(api_key="YOUR_API_KEY") 
 # once on application startup (e.g., in your main server.py).
 
+
+
+root_prompt = open("app/root_prompt.txt", "r").read()
+
 class GoogleHandler(BaseHandler):
     """
     Handler for Google's Generative AI models.
@@ -14,7 +18,7 @@ class GoogleHandler(BaseHandler):
         self.model = genai.GenerativeModel(
             model_name=self.model_name,
             generation_config=self.generation_config,
-            system_instruction=self.system_instruction
+            system_instruction=root_prompt + "[ " + self.system_instruction + " ]"  
         )
 
     async def handle(self, prompt: str, stream: bool = False) -> Union[str, AsyncIterable[str]]:
@@ -35,7 +39,10 @@ class GoogleHandler(BaseHandler):
             # You might want to raise a specific HTTP exception here.
             return f"An error occurred: {e}"
         
-
-    #return all models names for the user to choose from
-    def get_models(self) -> list[str]:
+    @staticmethod
+    def get_models() -> list[str]:
+        """
+        Return all available Google models. 
+        This is a static method so it can be called without creating an instance.
+        """
         return [model.name for model in genai.list_models()]

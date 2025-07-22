@@ -4,3 +4,4 @@ openai
 anthropic
 google-generativeai
 python-dotenv
+jinja2

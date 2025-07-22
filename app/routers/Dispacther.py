@@ -4,6 +4,7 @@ from typing import Union, AsyncIterable, Dict, Any, Optional
 from app.handlers.GoogleHandler import GoogleHandler
 from app.handlers.OpenAIHandler import OpenAIHandler
 from app.handlers.AnthropicHandler import AnthropicHandler
+from jinja2  import Template
 
 
 
@@ -43,11 +44,9 @@ async def dispatch_request(request: APIRequest) -> Union[str, AsyncIterable[str]
         # In a FastAPI app, you'd raise an HTTPException here.
         raise ValueError(f"Provider '{request.provider}' is not supported.")
 
-    if request.clientSystemPrompt:
-        system_instruction = root_prompt + "[ " + request.clientSystemPrompt + " ]"
-    else:
-        system_instruction = root_prompt
+    system_instruction = Template(root_prompt).render(clientSystemPrompt=request.clientSystemPrompt)
 
+    print(system_instruction)
     handler_instance = handler_class(
         model_name=request.model,
         generation_config=request.parameters,

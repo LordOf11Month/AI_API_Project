@@ -7,9 +7,7 @@ from typing import AsyncIterable
 from contextlib import asynccontextmanager
 
 from app.routers.Dispacther import dispatch_request, APIRequest
-from app.handlers.GoogleHandler import GoogleHandler
-from app.handlers.OpenAIHandler import OpenAIHandler
-
+from app.routers.Dispacther import HANDLERS
 # Load environment variables from a .env file if it exists
 load_dotenv()
 
@@ -28,6 +26,10 @@ async def lifespan(app: FastAPI):
     openai_api_key = os.getenv("OPENAI_API_KEY")
     if not openai_api_key:
         print("Warning: OPENAI_API_KEY environment variable not set.")
+
+    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not anthropic_api_key:
+        print("Warning: ANTHROPIC_API_KEY environment variable not set.")
         
     yield
     # Add any cleanup code here, to be run on shutdown.
@@ -81,9 +83,8 @@ async def get_models(provider: str):
     """
     Get available models for a specific provider.
     """
-    if provider.lower() == "google":
-        return {"models": GoogleHandler.get_models()}
-    elif provider.lower() == "openai":
-        return {"models": OpenAIHandler.get_models()}
-    else:
+    models = HANDLERS[provider].get_models()
+    if models is None:
         raise HTTPException(status_code=400, detail=f"Provider '{provider}' not supported")
+    return {"models": models}
+

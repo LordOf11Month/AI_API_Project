@@ -6,19 +6,17 @@ from app.handlers.BaseHandler import BaseHandler
 # once on application startup (e.g., in your main server.py).
 
 
-
-root_prompt = open("app/root_prompt.txt", "r").read()
-
 class GoogleHandler(BaseHandler):
     """
     Handler for Google's Generative AI models.
     """
     def __init__(self, model_name: str, generation_config: Dict[str, Any], system_instruction: Optional[str]):
         super().__init__(model_name, generation_config, system_instruction)
+        # Initialize the model
         self.model = genai.GenerativeModel(
             model_name=self.model_name,
             generation_config=self.generation_config,
-            system_instruction=root_prompt + "[ " + self.system_instruction + " ]"  
+            system_instruction=self.system_instruction
         )
 
     async def handle(self, prompt: str, stream: bool = False) -> Union[str, AsyncIterable[str]]:

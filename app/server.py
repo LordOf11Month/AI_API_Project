@@ -24,6 +24,11 @@ async def lifespan(app: FastAPI):
         genai.configure(api_key=google_api_key)
     else:
         print("Warning: GOOGLE_API_KEY environment variable not set.")
+
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    if not openai_api_key:
+        print("Warning: OPENAI_API_KEY environment variable not set.")
+        
     yield
     # Add any cleanup code here, to be run on shutdown.
 

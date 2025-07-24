@@ -43,14 +43,24 @@ class AnthropicHandler(BaseHandler):
             return f"An error occurred: {e}"
 
     @staticmethod
-    def get_models(self) -> list[str]:
+    def get_models() -> list[str]:
         """`
         Get a list of available Anthropic models.
         """
-
-
-        # this place need testing!!!!!!!---------------------
-
-        models = self.client.models.list(limit=20)
-        return [model.name for model in models]
+        try:
+            # Note: Anthropic SDK doesn't have a direct equivalent of OpenAI's `models.list()`.
+            # Officially, they recommend referring to their documentation for model names.
+            # For this reason, we'll return a static list of commonly used models.
+            # You can update this list as new models are released.
+            return [
+                "claude-3-opus-20240229",
+                "claude-3-sonnet-20240229",
+                "claude-3-haiku-20240307",
+                "claude-2.1",
+                "claude-2.0",
+                "claude-instant-1.2"
+            ]
+        except Exception as e:
+            print(f"Error getting Anthropic models: {e}")
+            return []
         

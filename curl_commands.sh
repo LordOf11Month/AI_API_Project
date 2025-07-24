@@ -31,3 +31,17 @@ curl -N -X 'POST' \
 curl -X 'GET' \
   'http://127.0.0.1:8000/api/models/google' \
   -H 'accept: application/json'
+
+
+curl -X 'POST' \
+  'http://127.0.0.1:8000/api/generate' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "stream": false,
+    "userPrompt": "What is the capital of Turkey?",
+    "parameters": {
+        "temperature": 0.7
+    }
+}'

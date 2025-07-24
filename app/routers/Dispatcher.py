@@ -4,6 +4,7 @@ from typing import Union, AsyncIterable, Dict, Any, Optional
 from app.handlers.GoogleHandler import GoogleHandler
 from app.handlers.OpenAIHandler import OpenAIHandler
 from app.handlers.AnthropicHandler import AnthropicHandler
+from app.handlers.DeepseekHandler import DeepseekHandler
 from jinja2  import Template
 
 
@@ -13,6 +14,7 @@ HANDLERS = {
     "google": GoogleHandler,
     "openai": OpenAIHandler,
     "anthropic": AnthropicHandler,
+    "deepseek": DeepseekHandler,
 }
 
 #------------------------------------------------------------------------

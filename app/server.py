@@ -6,8 +6,9 @@ import google.generativeai as genai
 from typing import AsyncIterable
 from contextlib import asynccontextmanager
 
-from app.routers.Dispacther import dispatch_request, APIRequest
-from app.routers.Dispacther import HANDLERS
+from app.routers.Dispatcher import dispatch_request, APIRequest
+from app.routers.Dispatcher import HANDLERS
+from app.routers.chat_complier import chat_request, ChatRequest
 # Load environment variables from a .env file if it exists
 load_dotenv()
 
@@ -30,6 +31,10 @@ async def lifespan(app: FastAPI):
     anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
     if not anthropic_api_key:
         print("Warning: ANTHROPIC_API_KEY environment variable not set.")
+        
+    deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
+    if not deepseek_api_key:
+        print("Warning: DEEPSEEK_API_KEY environment variable not set.")
         
     yield
     # Add any cleanup code here, to be run on shutdown.
@@ -76,6 +81,15 @@ async def generate(request: APIRequest):
         # A general catch-all for other unexpected errors during the process
         print(f"An internal error occurred: {e}")
         raise HTTPException(status_code=500, detail=f"An internal error occurred: {str(e)}")
+
+
+@app.post("/api/chat")
+async def chat(request: ChatRequest):
+    """
+    Handles a chat request by dispatching it to the correct provider handler.
+    """
+    response = await chat_request(request)
+    return {"response": response}
 
 
 @app.get("/api/models/{provider}")

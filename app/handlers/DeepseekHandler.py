@@ -2,6 +2,10 @@ import os
 from typing import Union, AsyncIterable, Dict, Any, Optional
 from openai import AsyncOpenAI, OpenAI
 from app.handlers.BaseHandler import BaseHandler
+import asyncio
+from uuid import UUID
+from app.models.DataModels import ResponseLog
+from app.logging.request_logger import log_response
 
 
 class DeepseekHandler(BaseHandler):
@@ -16,34 +20,49 @@ class DeepseekHandler(BaseHandler):
             base_url="https://api.deepseek.com/v1"
         )
 
-    async def handle(self, prompt: str, stream: bool = False) -> Union[str, AsyncIterable[str]]:
+    async def sync_handle(self, messages: list[Dict[str, str]], request_id: UUID) -> Dict[str, Any]:
         """
         Processes a prompt and returns the model's response.
         """
-        messages = []
         if self.system_instruction:
             messages.append({"role": "system", "content": self.system_instruction})
-        messages.append({"role": "user", "content": prompt})
 
         try:
             response = await self.client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
-                stream=stream,
                 **self.generation_config
             )
-            if stream:
-                async def stream_generator():
-                    async for chunk in response:
-                        content = chunk.choices[0].delta.content
-                        if content:
-                            yield content
-                return stream_generator()
-            else:
-                return response.choices[0].message.content
+            asyncio.create_task(log_response(ResponseLog(
+                request_id=request_id,
+                input_tokens=response.usage.prompt_tokens,
+                output_tokens=response.usage.completion_tokens,
+                response=response.choices[0].message.content,
+                status=response.choices[0].finish_reason == "stop",
+            )))
+            return response
         except Exception as e:
             print(f"Error handling Deepseek request: {e}")
             return f"An error occurred: {e}"
+        
+    async def stream_handle(self, messages: list[Dict[str, str]]) -> AsyncIterable[Dict[str, Any]]:
+        '''
+        Processes a prompt and returns the model's response as an async iterable of strings.
+        '''
+        if self.system_instruction:
+            messages.append({"role": "system", "content": self.system_instruction})
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model_name,
+                messages=messages,
+                **self.generation_config,
+                stream=True
+            )
+            async for chunk in response:
+                yield chunk
+        except Exception as e:
+            print(f"Error handling Deepseek request: {e}")
+            yield f"An error occurred: {e}"
 
 
     @staticmethod

@@ -12,9 +12,18 @@ class BaseHandler(ABC):
         self.system_instruction = system_instruction
 
     @abstractmethod
-    async def handle(self, prompt: str, stream: bool = False) -> Union[str, AsyncIterable[str]]:
+    async def sync_handle(self, messages: list[Dict[str, str]]) -> Dict[str, Any]:
         """
         Processes a prompt and returns the model's response.
+
+        This method must be implemented by subclasses.
+        """
+        pass
+
+    @abstractmethod
+    async def stream_handle(self, messages: list[Dict[str, str]]) -> AsyncIterable[Dict[str, Any]]:
+        """
+        Processes a prompt and returns the model's response as an async iterable of strings.
 
         This method must be implemented by subclasses.
         """

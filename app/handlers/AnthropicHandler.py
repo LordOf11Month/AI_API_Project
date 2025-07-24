@@ -1,6 +1,10 @@
 from typing import Union, AsyncIterable, Dict, Any, Optional
 from anthropic import AsyncAnthropic
 from app.handlers.BaseHandler import BaseHandler
+import asyncio
+from uuid import UUID
+from app.models.DataModels import ResponseLog
+from app.logging.request_logger import log_response
 
 
 class AnthropicHandler(BaseHandler):
@@ -12,35 +16,47 @@ class AnthropicHandler(BaseHandler):
         super().__init__(model_name, generation_config, system_instruction)
         self.client = AsyncAnthropic()
 
-    async def handle(self, prompt: str, stream: bool = False) -> Union[str, AsyncIterable[str]]:
+    async def sync_handle(self, messages: list[Dict[str, str]], request_id: UUID) -> Dict[str, Any]:
         """
         Processes a prompt and returns the model's response.
         """
-        messages = [{"role": "user", "content": prompt}]
         
         try:
-            if stream:
-                async def stream_generator():
-                    async with self.client.messages.stream(
-                        model=self.model_name,
-                        messages=messages,
-                        system=self.system_instruction,
-                        **self.generation_config
-                    ) as stream:
-                        async for text in stream.text_stream:
-                            yield text
-                return stream_generator()
-            else:
-                response = await self.client.messages.create(
-                    model=self.model_name,
-                    messages=messages,
-                    system=self.system_instruction,
-                    **self.generation_config
-                )
-                return response.content[0].text
+            response = await self.client.messages.create(
+                model=self.model_name,
+                messages=messages,
+                system=self.system_instruction,
+                **self.generation_config
+            )
+            asyncio.create_task(log_response(ResponseLog(
+                request_id=request_id,
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
+                response=response.content[0].text,
+                status=response.stop_reason == "end_turn",
+            )))
+            return response
         except Exception as e:
             print(f"Error handling Anthropic request: {e}")
             return f"An error occurred: {e}"
+
+    async def stream_handle(self, messages: list[Dict[str, str]]) -> AsyncIterable[Dict[str, Any]]:
+        """
+        Processes a prompt and returns the model's response as an async iterable of strings.
+        """
+        try:
+            response = await self.client.messages.create(
+                model=self.model_name,
+                messages=messages,
+                system=self.system_instruction,
+                **self.generation_config,
+                stream=True
+            )
+            async for chunk in response:
+                yield chunk
+        except Exception as e:
+            print(f"Error handling Anthropic request: {e}")
+            yield f"An error occurred: {e}"
 
     @staticmethod
     def get_models() -> list[str]:

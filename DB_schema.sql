@@ -7,24 +7,15 @@ CREATE TABLE clients (
 
 CREATE TABLE prompt_templates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id UUID REFERENCES clients(id),
+    --client_id UUID REFERENCES clients(id),
     name VARCHAR(255),
     prompt TEXT NOT NULL,
-    type TEXT CHECK (type IN ('chat', 'translate', 'custom')),
+    --type VARCHAR(50) CHECK (type IN ('chat', 'translate', 'custom')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    version SMALLINT DEFAULT 1
+    tenant_fields JSONB DEFAULT NULL
 );
 
-CREATE TABLE api_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    client_id UUID REFERENCES clients(id),
-    model VARCHAR(255),
-    prompt_template_id UUID REFERENCES prompt_templates(id),
-    tokens_input INT,
-    tokens_output INT,
-    latency_ms INT,
-    error_message TEXT DEFAULT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
 
 CREATE TABLE chats (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -33,11 +24,41 @@ CREATE TABLE chats (
 );
 
 
-CREATE TABLE messages (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    chat_id UUID REFERENCES chats(id) ON DELETE CASCADE,
-    role TEXT CHECK (role IN ('user', 'assistant', 'system')),
-    content TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+CREATE TABLE requests (
+    id UUID PRIMARY KEY,
+    chat_id UUID REFERENCES chats(id) ON DELETE SET NULL,
+    client_id UUID REFERENCES clients(id),
+
+    --SYSTEM PROMPT 
+    prompt_template_id UUID REFERENCES prompt_templates(id),
+    system_prompt_tenants JSONB DEFAULT NULL,
+    template_version SMALLINT DEFAULT 1,
+    
+    --MODEL
+    model_name TEXT NOT NULL,
+
+    --CONTENT
+    request TEXT NOT NULL,
+    response TEXT NOT NULL,
+
+    --TOKENS
+    input_tokens INT,
+    output_tokens INT,
+
+    --STATUS
+    status BOOLEAN, -- True if success, False if error
+    error_message TEXT DEFAULT NULL,
+    
+    created_at TIMESTAMP DEFAULT now()
 );
 
+CREATE TABLE API_KEYS (
+    api_key UUID PRIMARY KEY NOT null,
+    client_id UUID REFERENCES clients(id),
+    Provider VARCHAR(50) CHECK (Provider IN ('google', 'openai', 'anthropic','deepseek'))
+);
+
+-- Indexes
+CREATE INDEX idx_requests_chat_id ON requests(chat_id);
+CREATE INDEX idx_requests_created_at ON requests(created_at ASC);

@@ -6,9 +6,8 @@ import google.generativeai as genai
 from typing import AsyncIterable
 from contextlib import asynccontextmanager
 
-from app.routers.Dispatcher import dispatch_request, APIRequest
-from app.routers.Dispatcher import HANDLERS
-from app.routers.chat_complier import chat_request, ChatRequest
+from app.routers.Dispatcher import  HANDLERS, stream_request,sync_request
+from app.models.DataModels import APIRequest
 # Load environment variables from a .env file if it exists
 load_dotenv()
 
@@ -19,9 +18,7 @@ async def lifespan(app: FastAPI):
     Configure clients on startup.
     """
     google_api_key = os.getenv("GOOGLE_API_KEY")
-    if google_api_key:
-        genai.configure(api_key=google_api_key)
-    else:
+    if not google_api_key:
         print("Warning: GOOGLE_API_KEY environment variable not set.")
 
     openai_api_key = os.getenv("OPENAI_API_KEY")
@@ -61,7 +58,7 @@ async def generate(request: APIRequest):
     It supports both streaming and non-streaming responses.
     """
     try:
-        response = await dispatch_request(request)
+        response = await sync_request(request)
         
         if request.stream:
             # Ensure the response is an async iterable, as expected for streaming
@@ -84,11 +81,11 @@ async def generate(request: APIRequest):
 
 
 @app.post("/api/chat")
-async def chat(request: ChatRequest):
+async def chat(request: APIRequest):
     """
     Handles a chat request by dispatching it to the correct provider handler.
     """
-    response = await chat_request(request)
+    response = await stream_request(request)
     return {"response": response}
 
 

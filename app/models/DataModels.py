@@ -1,14 +1,12 @@
 from __future__ import annotations
-
-from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict
-
+from typing import Any, Dict, Optional
 from uuid import UUID
+from pydantic import BaseModel, Field
 
 
-@dataclass
-class RequestLog:
+class RequestLog(BaseModel):
+    client_id: UUID
     chat_id: UUID
     user_prompt: str
     model_name: str
@@ -16,26 +14,28 @@ class RequestLog:
     created_at: datetime
 
 
-@dataclass
-class ResponseLog:
+class ResponseLog(BaseModel):
     request_id: UUID
     input_tokens: int
     output_tokens: int
     response: str
     status: bool
-    error_message: str | None = None
+    error_message: Optional[str] = None
 
-@dataclass
-class SystemPrompt:
+class SystemPrompt(BaseModel):
     template: str
-    tenants: Dict[str, Any] = field(default_factory=dict)
+    tenants: Dict[str, Any] = Field(default_factory=dict)
 
-@dataclass
-class APIRequest:
+class APIRequest(BaseModel):
     provider: str
     model: str
     systemPrompt: SystemPrompt
     userprompt: str
-    parameters: Dict[str, Any] = field(default_factory=dict)
+    parameters: Dict[str, Any] = Field(default_factory=dict)
     stream: bool = False
-    chatid: UUID | None = None
+    chatid: Optional[UUID] = None
+
+
+class ClientCredentials(BaseModel):
+    email: str
+    password: str

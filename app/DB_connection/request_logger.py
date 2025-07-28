@@ -38,7 +38,7 @@ async def initialize_request(request: RequestLog):
             # Create the request record
             db_request = Request(
                 chat_id=request.chat_id,
-                client_id=chat.client_id,  # Get client_id from the chat
+                client_id=request.client_id,  # Get client_id from the chat
                 prompt_template_id=prompt_template_id,
                 system_prompt_tenants=system_prompt_tenants,
                 template_version=template_version,

@@ -61,9 +61,12 @@ def instructionBuilder(systemPrompt: SystemPrompt) -> str:
     '''
     Builds a system prompt for the chat completion request.
     '''
-    pass
+    # This should be implemented based on your application's logic
+    # For example, using a template engine like Jinja2
+    template = Template(systemPrompt.template)
+    return template.render(systemPrompt.tenants)
 
-async def dispatch_request(request: APIRequest):
+async def dispatch_request(request: APIRequest, client_id: str):
     """
     Dispatches an API request to the appropriate handler.
     This function handles both streaming and non-streaming requests.
@@ -74,6 +77,7 @@ async def dispatch_request(request: APIRequest):
 
     # Start the request initialization but don't await it yet
     request_id_future = initialize_request(RequestLog(
+        client_id=client_id,
         chat_id=request.chatid,
         user_prompt=request.userprompt,
         model_name=request.model,

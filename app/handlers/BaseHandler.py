@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Union, AsyncIterable, Dict, Any, Optional
+from uuid import UUID
 
 class BaseHandler(ABC):
     """
@@ -12,7 +13,7 @@ class BaseHandler(ABC):
         self.system_instruction = system_instruction
 
     @abstractmethod
-    async def sync_handle(self, messages: list[Dict[str, str]]) -> Dict[str, Any]:
+    async def sync_handle(self, messages: list[Dict[str, str]],request_id:UUID) -> Dict[str, Any]:
         """
         Processes a prompt and returns the model's response.
 
@@ -21,7 +22,7 @@ class BaseHandler(ABC):
         pass
 
     @abstractmethod
-    async def stream_handle(self, messages: list[Dict[str, str]]) -> AsyncIterable[Dict[str, Any]]:
+    async def stream_handle(self, messages: list[Dict[str, str]],request_id:UUID) -> AsyncIterable[Dict[str, Any]]:
         """
         Processes a prompt and returns the model's response as an async iterable of strings.
 

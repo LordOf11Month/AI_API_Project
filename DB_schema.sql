@@ -1,6 +1,6 @@
 CREATE TABLE clients (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email VARCHAR(255) NOT NULL,
+    email VARCHAR(255) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -8,7 +8,7 @@ CREATE TABLE clients (
 CREATE TABLE prompt_templates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     --client_id UUID REFERENCES clients(id),
-    name VARCHAR(255),
+    name VARCHAR(255) UNIQUE,
     prompt TEXT NOT NULL,
     --type VARCHAR(50) CHECK (type IN ('chat', 'translate', 'custom')),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

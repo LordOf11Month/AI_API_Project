@@ -10,7 +10,7 @@ from jinja2  import Template
 
 from datetime import datetime
 from app.models.DataModels import RequestLog, ResponseLog, SystemPrompt, APIRequest
-from app.logging.request_logger import log_request, log_response
+from app.DB_connection.request_logger import log_request, log_response
 
 
 # A mapping of provider names to their handler classes-----------------
@@ -55,11 +55,7 @@ root_prompt = open("app/root_prompt.txt", "r").read()
 #         stream=request.stream
 #     )
 
-async def chat_completion(chatId:UUID, userprompt:str) -> list[Dict[str, str]]:
-    '''
-    Handles a chat completion request.
-    '''
-    pass
+
 
 def instructionBuilder(systemPrompt: SystemPrompt) -> str:
     '''
@@ -67,14 +63,7 @@ def instructionBuilder(systemPrompt: SystemPrompt) -> str:
     '''
     pass
 
-async def sync_request(request: APIRequest):
-    log_request(RequestLog(
-        chat_id=request.chatid,
-        user_prompt=request.userprompt,
-        model_name=request.model,
-        system_prompt=request.systemPrompt,
-        created_at=datetime.now()
-    ))
+async def sync_request(request: APIRequest,messages:list[Dict[str, str]],request_id:UUID):
     """
     Dispatches an API request to the appropriate handler.
     """
@@ -93,14 +82,14 @@ async def sync_request(request: APIRequest):
         system_instruction=system_instruction
     )
 
-    return await handler_instance.handle(
-        messages=chat_completion(request.chatid, request.userprompt),
-        stream=False
+    return await handler_instance.sync_handle(
+        messages=messages,
+        request_id=request_id
     )
 
 
 
-async def stream_request(request: APIRequest):
+async def stream_request(request: APIRequest,messages:list[Dict[str, str]]):
     '''
     Handles a stream request
     '''

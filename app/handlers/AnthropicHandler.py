@@ -4,7 +4,7 @@ from app.handlers.BaseHandler import BaseHandler
 import asyncio
 from uuid import UUID
 from app.models.DataModels import ResponseLog
-from app.logging.request_logger import log_response
+from app.DB_connection.request_logger import log_response
 
 
 class AnthropicHandler(BaseHandler):

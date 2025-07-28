@@ -10,7 +10,7 @@ Base = declarative_base()
 class Client(Base):
     __tablename__ = 'clients'
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=False, unique=True)
     password = Column(String(255), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -19,7 +19,7 @@ class Client(Base):
 class PromptTemplate(Base):
     __tablename__ = 'prompt_templates'
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name = Column(String(255))
+    name = Column(String(255), unique=True, nullable=False)
     prompt = Column(TEXT, nullable=False)
     version = Column(SMALLINT, default=1)
     tenant_fields = Column(JSON, default=None)

@@ -6,7 +6,7 @@ import os
 import asyncio
 from uuid import UUID
 from app.models.DataModels import ResponseLog
-from app.DB_connection.request_logger import log_response
+from app.DB_connection.request_manager import log_response
 
 # NOTE: It's recommended to call genai.configure(api_key="YOUR_API_KEY") 
 # once on application startup (e.g., in your main server.py).

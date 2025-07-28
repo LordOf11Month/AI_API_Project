@@ -7,9 +7,10 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
 
 from app.routers.Dispatcher import HANDLERS, dispatch_request
-from app.models.DataModels import APIRequest, ClientCredentials
+from app.models.DataModels import APIRequest, ClientCredentials, PromptTemplateCreate
 from app.DB_connection.chat_manager import create_chat
 from app.DB_connection.client_manager import create_client, authenticate_client
+from app.DB_connection.PromptTemplate_manager import create_prompt_template, update_prompt_template
 from app.auth.token_utils import create_token
 from app.auth.middleware import get_current_client_id
 
@@ -151,4 +152,53 @@ async def get_token(credentials: ClientCredentials, expr: timedelta | None = Non
     
     token = create_token(client_id=str(client.id), expires_delta=token_expires)
     return {"access_token": token, "token_type": "bearer"}
+
+
+@app.post("/api/template", status_code=201)
+async def handle_create_template(
+    template_data: PromptTemplateCreate,
+    client_id: str = Depends(get_current_client_id)
+):
+    """
+    Create a new prompt template. Requires authentication.
+    """
+    try:
+        template = await create_prompt_template(template_data)
+        return {
+            "id": template.id,
+            "name": template.name,
+            "version": template.version,
+            "tenant_fields": template.tenant_fields,
+            "created_at": template.created_at
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e)) # 409 Conflict
+    except Exception as e:
+        print(f"Error creating template: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create template.")
+
+
+@app.put("/api/template/{template_name}")
+async def handle_update_template(
+    template_name: str,
+    template_data: PromptTemplateCreate,
+    client_id: str = Depends(get_current_client_id)
+):
+    """
+    Update an existing prompt template. Requires authentication.
+    """
+    try:
+        template = await update_prompt_template(template_name, template_data)
+        return {
+            "id": template.id,
+            "name": template.name,
+            "version": template.version,
+            "tenant_fields": template.tenant_fields,
+            "updated_at": template.updated_at
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) # 404 Not Found
+    except Exception as e:
+        print(f"Error updating template: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update template.")
 

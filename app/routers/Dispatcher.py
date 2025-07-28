@@ -2,6 +2,7 @@ from pydantic import BaseModel, Field
 from typing import Union, AsyncIterable, Dict, Any, Optional
 from uuid import UUID
 
+from app.DB_connection.PromptTemplate_manager import get_rendered_prompt
 from app.handlers.GoogleHandler import GoogleHandler
 from app.handlers.OpenAIHandler import OpenAIHandler
 from app.handlers.AnthropicHandler import AnthropicHandler
@@ -10,7 +11,7 @@ from jinja2  import Template
 
 from datetime import datetime
 from app.models.DataModels import RequestLog, ResponseLog, SystemPrompt, APIRequest
-from app.DB_connection.request_logger import log_request, log_response, initialize_request
+from app.DB_connection.request_manager import log_request, log_response, initialize_request
 
 
 # A mapping of provider names to their handler classes-----------------
@@ -24,8 +25,6 @@ HANDLERS = {
 #------------------------------------------------------------------------
 
 
-# Read root prompt
-root_prompt = open("app/root_prompt.txt", "r").read()
 
 
 
@@ -57,14 +56,6 @@ root_prompt = open("app/root_prompt.txt", "r").read()
 
 
 
-def instructionBuilder(systemPrompt: SystemPrompt) -> str:
-    '''
-    Builds a system prompt for the chat completion request.
-    '''
-    # This should be implemented based on your application's logic
-    # For example, using a template engine like Jinja2
-    template = Template(systemPrompt.template)
-    return template.render(systemPrompt.tenants)
 
 async def dispatch_request(request: APIRequest, client_id: str):
     """
@@ -85,7 +76,7 @@ async def dispatch_request(request: APIRequest, client_id: str):
         created_at=datetime.now()
     ))
 
-    system_instruction = instructionBuilder(request.systemPrompt)
+    system_instruction = get_rendered_prompt(request.systemPrompt)
     handler_instance = handler_class(
         model_name=request.model,
         generation_config=request.parameters,

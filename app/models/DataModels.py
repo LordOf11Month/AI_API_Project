@@ -23,7 +23,7 @@ class ResponseLog(BaseModel):
     error_message: Optional[str] = None
 
 class SystemPrompt(BaseModel):
-    template: str
+    template_name: str
     tenants: Dict[str, Any] = Field(default_factory=dict)
 
 class APIRequest(BaseModel):
@@ -39,3 +39,9 @@ class APIRequest(BaseModel):
 class ClientCredentials(BaseModel):
     email: str
     password: str
+
+
+class PromptTemplateCreate(BaseModel):
+    name: str
+    prompt: str
+    tenant_fields: list[str] = []

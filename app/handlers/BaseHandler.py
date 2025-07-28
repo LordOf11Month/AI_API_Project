@@ -38,3 +38,11 @@ class BaseHandler(ABC):
         This should be implemented as a static method by subclasses.
         """
         pass
+
+    @staticmethod
+    @abstractmethod
+    def chat_complier(userprompt: str,chat_id:UUID | None) -> any:
+       """
+       This method is used to compile the user prompt into a list of messages for the model.
+       """
+       pass

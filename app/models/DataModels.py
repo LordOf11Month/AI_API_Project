@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from uuid import UUID
 
@@ -38,4 +38,4 @@ class APIRequest:
     userprompt: str
     parameters: Dict[str, Any] = field(default_factory=dict)
     stream: bool = False
-    chatid: Optional[UUID] = None
+    chatid: UUID | None = None

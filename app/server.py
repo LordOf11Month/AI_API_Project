@@ -8,9 +8,10 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 
 from app.routers.Dispatcher import HANDLERS, stream_request, sync_request
-from app.DB_connection.chat_compiler import chat_complier
+
 from app.models.DataModels import APIRequest, RequestLog
 from app.DB_connection.request_logger import initialize_request
+from app.DB_connection.chat_manager import create_chat
 
 # Load environment variables from a .env file if it exists
 load_dotenv()
@@ -66,42 +67,33 @@ app = FastAPI(
 )
 
 
+async def _dispatch_and_respond(request: APIRequest):
+    """
+    Helper function to dispatch a request and format the HTTP response.
+    """
+    response = await dispatch_request(request)
+    
+    if request.stream:
+        if isinstance(response, AsyncIterable):
+            return StreamingResponse(response, media_type="text/event-stream")
+        else:
+            raise HTTPException(status_code=500, detail="Streaming was requested but is not supported or failed for this provider.")
+    else:
+        return {"response": response}
+
+
 @app.post("/api/generate")
 async def generate(request: APIRequest):
     """
-    Handles a generation request by dispatching it to the correct provider handler.
-    It supports both streaming and non-streaming responses.
+    Handles a one-shot generation request. Chat history is ignored.
     """
     try:
-        messages: List[Dict[str, str]] = []
-        messages.append({"role": "user", "content": request.userprompt})
-
-        request_id = await initialize_request(RequestLog(
-            chat_id=request.chatid,
-            user_prompt=request.userprompt,
-            model_name=request.model,
-            system_prompt=request.systemPrompt,
-            created_at=datetime.now()
-        ))
-        
-        if request.stream:
-            response = await stream_request(request)
-            # Ensure the response is an async iterable, as expected for streaming
-            if isinstance(response, AsyncIterable):
-                return StreamingResponse(response, media_type="text/event-stream")
-            else:
-                # This could happen if a handler fails to return a stream correctly.
-                raise HTTPException(status_code=500, detail="Streaming was requested but is not supported or failed for this provider.")
-        else:
-            response = await sync_request(request,messages,request_id)
-            # For non-streaming requests, return the complete response in a JSON object.
-            return {"response": response}
-
+        # For one-shot generation, explicitly ignore any provided chat history.
+        request.chatid = None
+        return await _dispatch_and_respond(request)
     except ValueError as e:
-        # Catches unsupported provider errors from the dispatcher
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        # A general catch-all for other unexpected errors during the process
         print(f"An internal error occurred: {e}")
         raise HTTPException(status_code=500, detail=f"An internal error occurred: {str(e)}")
 
@@ -109,36 +101,16 @@ async def generate(request: APIRequest):
 @app.post("/api/chat")
 async def chat(request: APIRequest):
     """
-    Handles a chat request by dispatching it to the correct provider handler.
+    Handles a conversational chat request.
+    If no chatid is provided, a new chat session is created.
     """
     try:
-        # Initialize messages list with the user prompt
-        messages: List[Dict[str, str]] = []
-        await chat_complier(request.chatid, messages, request.provider,request.userprompt)
-
-        request_id = await initialize_request(RequestLog(
-            chat_id=request.chatid,
-            user_prompt=request.userprompt,
-            model_name=request.model,
-            system_prompt=request.systemPrompt,
-            created_at=datetime.now()
-        ))
-
-        if request.stream:
-            response = await stream_request(request, messages)
-            if isinstance(response, AsyncIterable):
-                return StreamingResponse(response, media_type="text/event-stream")
-            else:
-                # This could happen if a handler fails to return a stream correctly.
-                raise HTTPException(status_code=500, detail="Streaming was requested but is not supported or failed for this provider.")
-        else:
-            response = await sync_request(request, messages, request_id)
-            return {"response": response}
+        if request.chatid is None:
+            request.chatid = await create_chat()
+        return await _dispatch_and_respond(request)
     except ValueError as e:
-        # Catches unsupported provider errors from the dispatcher
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        # A general catch-all for other unexpected errors during the process
         print(f"An internal error occurred: {e}")
         raise HTTPException(status_code=500, detail=f"An internal error occurred: {str(e)}")
 

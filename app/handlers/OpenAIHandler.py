@@ -6,6 +6,7 @@ from uuid import UUID
 from app.models.DataModels import ResponseLog
 from app.DB_connection.request_manager import finalize_request
 from app.DB_connection.chat_manager import chat_history
+from app.utils.console_logger import info, warning, error, debug
 
 
 class OpenAIHandler(BaseHandler):
@@ -16,33 +17,30 @@ class OpenAIHandler(BaseHandler):
     def __init__(self, model_name: str, generation_config: Dict[str, Any], system_instruction: Optional[str]):
         super().__init__(model_name, generation_config, system_instruction)
         self.client = AsyncOpenAI()
+        debug(f"OpenAI client initialized for model '{self.model_name}'.", "[OpenAIHandler]")
 
     async def sync_handle(self, user_prompt: str, chat_id: UUID | None, request_id: UUID) -> Dict[str, Any]:
         """
         Processes a prompt and returns the model's response.
         """
         try:
-            print(f"[OpenAIHandler] Starting sync_handle for request_id: {request_id}")
-            print(f"[OpenAIHandler] Compiling messages with prompt: {user_prompt}")
+            info(f"Handling synchronous request for model: {self.model_name}", "[OpenAIHandler]")
+            debug(f"Request ID: {request_id}", "[OpenAIHandler]")
+            
             formatted_messages = await self.chat_complier(user_prompt, chat_id)
             if self.system_instruction:
                 formatted_messages.insert(0, {"role": "system", "content": self.system_instruction})
-            print(f"[OpenAIHandler] Formatted messages: {formatted_messages}")
-
+            
             try:
-                print("[OpenAIHandler] Calling OpenAI API...")
-                # Note: The 'chat.completions' endpoint is the current standard for all modern
-                # OpenAI models (e.g., GPT-4, GPT-4o), even for single-turn, non-chat requests.
-                # This is the recommended approach by OpenAI for accessing their latest models.
+                debug("Sending request to OpenAI API.", "[OpenAIHandler]")
                 response = await self.client.chat.completions.create(
                     model=self.model_name,
                     messages=formatted_messages,
                     **self.generation_config
                 )
-                print("[OpenAIHandler] Received response from OpenAI API")
+                debug("Received synchronous response from API.", "[OpenAIHandler]")
             except asyncio.CancelledError:
-                print("[OpenAIHandler] Request was cancelled during API call")
-                # Start logging but don't await it
+                warning("Request was cancelled during API call", "[OpenAIHandler]")
                 asyncio.create_task(finalize_request(ResponseLog(
                     request_id=request_id,
                     response="Request cancelled",
@@ -51,13 +49,11 @@ class OpenAIHandler(BaseHandler):
                     status=False,
                     error_message="Request was cancelled during processing"
                 )))
-                raise  # Re-raise the cancellation
+                raise
 
-            # Extract the response content
             response_content = response.choices[0].message.content
-            print(f"[OpenAIHandler] Extracted response content: {response_content[:100]}...")
+            debug(f"Extracted response content: {response_content[:100]}...", "[OpenAIHandler]")
 
-            # Start logging but don't await it
             asyncio.create_task(finalize_request(ResponseLog(
                 request_id=request_id,
                 input_tokens=response.usage.prompt_tokens,
@@ -66,15 +62,12 @@ class OpenAIHandler(BaseHandler):
                 status=response.choices[0].finish_reason == "stop",
             )))
 
-            print("[OpenAIHandler] Successfully completed request")
-            # Return response immediately while logging continues in background
+            info("Synchronous response processed and logged.", "[OpenAIHandler]")
             return {"response": response_content}
 
         except Exception as e:
-            if not isinstance(e, asyncio.CancelledError):  # Don't log cancelled errors twice
-                print(f"[OpenAIHandler] Error occurred: {str(e)}")
-                print(f"[OpenAIHandler] Error type: {type(e)}")
-                # Start error logging but don't await it
+            if not isinstance(e, asyncio.CancelledError):
+                error(f"An error occurred during sync handle: {e}", "[OpenAIHandler]")
                 asyncio.create_task(finalize_request(ResponseLog(
                     request_id=request_id,
                     response="",
@@ -83,18 +76,19 @@ class OpenAIHandler(BaseHandler):
                     status=False,
                     error_message=str(e)
                 )))
-            raise  # Re-raise the exception to be handled by FastAPI
+            raise
         
     async def stream_handle(self, user_prompt: str, chat_id: UUID | None, request_id: UUID) -> AsyncIterable[Dict[str, Any]]:
-        print(f"[OpenAIHandler] Starting stream_handle for request_id: {request_id}")
+        info(f"Handling streaming request for model: {self.model_name}", "[OpenAIHandler]")
+        debug(f"Request ID: {request_id}", "[OpenAIHandler]")
+        
         formatted_messages = await self.chat_complier(user_prompt, chat_id)
         if self.system_instruction:
             formatted_messages.insert(0, {"role": "system", "content": self.system_instruction})
-        print(f"[OpenAIHandler] Formatted messages for stream: {formatted_messages}")
 
         full_response = ""
         try:
-            print("[OpenAIHandler] Starting streaming request to OpenAI API")
+            debug("Sending streaming request to OpenAI API.", "[OpenAIHandler]")
             response_stream = await self.client.chat.completions.create(
                 model=self.model_name,
                 messages=formatted_messages,
@@ -102,27 +96,25 @@ class OpenAIHandler(BaseHandler):
                 stream=True
             )
             
-            print("[OpenAIHandler] Processing stream chunks")
+            debug("Processing stream chunks...", "[OpenAIHandler]")
             async for chunk in response_stream:
                 content = chunk.choices[0].delta.content
                 if content:
                     full_response += content
-                    print(f"[OpenAIHandler] Received chunk: {content[:50]}...")
+                    debug(f"Received stream chunk: {content[:50]}...", "[OpenAIHandler]")
                 yield {"response": content}
             
-            # After the stream is complete, log the response
-            print("[OpenAIHandler] Stream completed, logging to database")
+            info("Streaming finished. Logging full response.", "[OpenAIHandler]")
             asyncio.create_task(finalize_request(ResponseLog(
                 request_id=request_id,
                 response=full_response,
-                input_tokens=0, # Not available for streaming
-                output_tokens=0, # Not available for streaming
-                status=True,  # Assuming success if stream completes
+                input_tokens=0, 
+                output_tokens=0,
+                status=True,
             )))
 
         except asyncio.CancelledError:
-            print("[OpenAIHandler] Stream was cancelled")
-            # Handle cancellation by logging it and cleaning up
+            warning("Stream was cancelled during processing", "[OpenAIHandler]")
             asyncio.create_task(finalize_request(ResponseLog(
                 request_id=request_id,
                 response=full_response,
@@ -131,11 +123,10 @@ class OpenAIHandler(BaseHandler):
                 status=False,
                 error_message="Stream was cancelled during processing"
             )))
-            raise  # Re-raise the cancellation
+            raise
 
         except Exception as e:
-            print(f"[OpenAIHandler] Stream error occurred: {str(e)}")
-            print(f"[OpenAIHandler] Stream error type: {type(e)}")
+            error(f"An error occurred during stream handle: {e}", "[OpenAIHandler]")
             asyncio.create_task(finalize_request(ResponseLog(
                 request_id=request_id,
                 response=full_response,
@@ -152,11 +143,14 @@ class OpenAIHandler(BaseHandler):
         Return all available OpenAI models. 
         This is a static method so it can be called without creating an instance.
         """
+        debug("Fetching available models for OpenAI.", "[OpenAIHandler]")
         try:
             client = OpenAI()
-            return [model.id for model in client.models.list()]
+            models = [model.id for model in client.models.list()]
+            debug(f"Found models: {models}", "[OpenAIHandler]")
+            return models
         except Exception as e:
-            print(f"Error getting OpenAI models: {e}")
+            error(f"Failed to fetch models from OpenAI: {e}", "[OpenAIHandler]")
             return []
     
     @staticmethod
@@ -164,15 +158,20 @@ class OpenAIHandler(BaseHandler):
         """
         This method is used to compile the user prompt into a list of messages for the model.
         """
+        debug(f"Compiling chat for chat_id: {chat_id}", "[OpenAIHandler]")
         history = await chat_history(chat_id)
+        if history:
+            debug(f"Found {len(history)} messages in chat history.", "[OpenAIHandler]")
+        else:
+            warning(f"No history found for chat_id: {chat_id}", "[OpenAIHandler]")
+
         formatted_messages = []
         for message in history:
             formatted_messages.append({"role": "user", "content": message["request"]})
             formatted_messages.append({"role": "assistant", "content": message["response"]})
         
-        # Add the latest user prompt
         formatted_messages.append({"role": "user", "content": userprompt})
-        
+        debug(f"Chat compiled. Total messages: {len(formatted_messages)}", "[OpenAIHandler]")
         return formatted_messages
     
     

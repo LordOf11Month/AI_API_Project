@@ -1,8 +1,8 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+
 import os
 from typing import Optional, AsyncGenerator
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from app.utils.console_logger import info, debug, error
 
 class DatabaseManager:
     _instance: Optional['DatabaseManager'] = None
@@ -17,32 +17,20 @@ class DatabaseManager:
 
     def _initialize(self):
         if self._engine is None:
+            info("Initializing DatabaseManager...", "[DBManager]")
             # Get PostgreSQL connection details from environment variables
             DB_USER = os.getenv("DB_USER","postgres")
-            print(DB_USER)
             DB_PASSWORD = os.getenv("DB_PASSWORD","")
-            print(DB_PASSWORD)
             DB_HOST = os.getenv("DB_HOST", "localhost")
-            print(DB_HOST)
             DB_PORT = os.getenv("DB_PORT", "5432")
-            print(DB_PORT)
             DB_NAME = os.getenv("DB_NAME","AI_api_Center_db")
-            print(DB_NAME)
-            # Validate required environment variables
-            required_vars = {
-                "DB_USER": DB_USER,
-                "DB_PASSWORD": DB_PASSWORD,
-                "DB_NAME": DB_NAME
-            }
-
-            # missing_vars = [var for var, value in required_vars.items() if not value]
-            # if missing_vars:
-            #     raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
-
+            debug(f"DB Config: User={DB_USER}, Host={DB_HOST}, Port={DB_PORT}, DB_Name={DB_NAME}", "[DBManager]")
+            
             # Construct PostgreSQL URL
             DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
             # Create async engine and session factory
+            info("Creating async database engine...", "[DBManager]")
             self._engine = create_async_engine(DATABASE_URL)
             self._SessionLocal = async_sessionmaker(
                 autocommit=False,
@@ -50,6 +38,7 @@ class DatabaseManager:
                 bind=self._engine,
                 class_=AsyncSession
             )
+            info("DatabaseManager initialized successfully.", "[DBManager]")
 
     @property
     def engine(self):
@@ -69,8 +58,14 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     Dependency function that yields database sessions
     """
+    debug("Creating new database session.", "[DBManager]")
     session = SessionLocal()
     try:
         yield session
+    except Exception as e:
+        error(f"An error occurred in database session: {e}", "[DBManager]")
+        await session.rollback()
+        raise
     finally:
+        debug("Closing database session.", "[DBManager]")
         await session.close() 

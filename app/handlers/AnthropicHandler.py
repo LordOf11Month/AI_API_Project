@@ -6,6 +6,8 @@ from uuid import UUID
 from app.models.DataModels import ResponseLog
 from app.DB_connection.request_manager import finalize_request
 from app.DB_connection.chat_manager import chat_history
+import os
+from app.utils.console_logger import info, warning, error, debug
 
 
 class AnthropicHandler(BaseHandler):
@@ -16,29 +18,29 @@ class AnthropicHandler(BaseHandler):
     def __init__(self, model_name: str, generation_config: Dict[str, Any], system_instruction: Optional[str]):
         super().__init__(model_name, generation_config, system_instruction)
         self.client = AsyncAnthropic()
+        debug(f"Anthropic client initialized for model '{self.model_name}'.", "[AnthropicHandler]")
 
     async def sync_handle(self, user_prompt: str, chat_id: UUID | None, request_id: UUID) -> Dict[str, Any]:
         """
         Processes a prompt and returns the model's response.
         """
         try:
-            print(f"[AnthropicHandler] Starting sync_handle for request_id: {request_id}")
-            print(f"[AnthropicHandler] Compiling messages with prompt: {user_prompt}")
+            info(f"Handling synchronous request for model: {self.model_name}", "[AnthropicHandler]")
+            debug(f"Request ID: {request_id}", "[AnthropicHandler]")
+
             formatted_messages = await self.chat_complier(user_prompt, chat_id)
-            print(f"[AnthropicHandler] Formatted messages: {formatted_messages}")
             
             try:
-                print("[AnthropicHandler] Calling Anthropic API...")
+                debug("Sending request to Anthropic API.", "[AnthropicHandler]")
                 response = await self.client.messages.create(
                     model=self.model_name,
                     messages=formatted_messages,
                     system=self.system_instruction,
                     **self.generation_config
                 )
-                print("[AnthropicHandler] Received response from Anthropic API")
+                debug("Received synchronous response from API.", "[AnthropicHandler]")
             except asyncio.CancelledError:
-                print("[AnthropicHandler] Request was cancelled during API call")
-                # Start logging but don't await it
+                warning("Request was cancelled during API call", "[AnthropicHandler]")
                 asyncio.create_task(finalize_request(ResponseLog(
                     request_id=request_id,
                     response="Request cancelled",
@@ -47,13 +49,11 @@ class AnthropicHandler(BaseHandler):
                     status=False,
                     error_message="Request was cancelled during processing"
                 )))
-                raise  # Re-raise the cancellation
+                raise
 
-            # Extract the response content
             response_content = response.content[0].text
-            print(f"[AnthropicHandler] Extracted response content: {response_content[:100]}...")
+            debug(f"Extracted response content: {response_content[:100]}...", "[AnthropicHandler]")
 
-            # Start logging but don't await it
             asyncio.create_task(finalize_request(ResponseLog(
                 request_id=request_id,
                 input_tokens=response.usage.input_tokens,
@@ -62,15 +62,12 @@ class AnthropicHandler(BaseHandler):
                 status=response.stop_reason == "end_turn",
             )))
 
-            print("[AnthropicHandler] Successfully completed request")
-            # Return response immediately while logging continues in background
+            info("Synchronous response processed and logged.", "[AnthropicHandler]")
             return {"response": response_content}
 
         except Exception as e:
-            if not isinstance(e, asyncio.CancelledError):  # Don't log cancelled errors twice
-                print(f"[AnthropicHandler] Error occurred: {str(e)}")
-                print(f"[AnthropicHandler] Error type: {type(e)}")
-                # Start error logging but don't await it
+            if not isinstance(e, asyncio.CancelledError):
+                error(f"An error occurred during sync handle: {e}", "[AnthropicHandler]")
                 asyncio.create_task(finalize_request(ResponseLog(
                     request_id=request_id,
                     response="",
@@ -79,43 +76,42 @@ class AnthropicHandler(BaseHandler):
                     status=False,
                     error_message=str(e)
                 )))
-            raise  # Re-raise the exception to be handled by FastAPI
+            raise
 
     async def stream_handle(self, user_prompt: str, chat_id: UUID | None, request_id: UUID) -> AsyncIterable[Dict[str, Any]]:
-        print(f"[AnthropicHandler] Starting stream_handle for request_id: {request_id}")
+        info(f"Handling streaming request for model: {self.model_name}", "[AnthropicHandler]")
+        debug(f"Request ID: {request_id}", "[AnthropicHandler]")
+        
         formatted_messages = await self.chat_complier(user_prompt, chat_id)
-        print(f"[AnthropicHandler] Formatted messages for stream: {formatted_messages}")
         
         full_response = ""
         try:
-            print("[AnthropicHandler] Starting streaming request to Anthropic API")
+            debug("Sending streaming request to Anthropic API.", "[AnthropicHandler]")
             async with self.client.messages.stream(
                 model=self.model_name,
                 messages=formatted_messages,
                 system=self.system_instruction,
                 **self.generation_config
             ) as response_stream:
-                print("[AnthropicHandler] Processing stream chunks")
+                debug("Processing stream chunks...", "[AnthropicHandler]")
                 async for chunk in response_stream.text_stream:
                     full_response += chunk
-                    print(f"[AnthropicHandler] Received chunk: {chunk[:50]}...")
+                    debug(f"Received stream chunk: {chunk[:50]}...", "[AnthropicHandler]")
                     yield {"response": chunk}
                 
                 final_message = await response_stream.get_final_message()
             
-            # After the stream is complete, log the response
-            print("[AnthropicHandler] Stream completed, logging to database")
+            info("Streaming finished. Logging full response.", "[AnthropicHandler]")
             asyncio.create_task(finalize_request(ResponseLog(
                 request_id=request_id,
                 response=full_response,
                 input_tokens=final_message.usage.input_tokens,
                 output_tokens=final_message.usage.output_tokens,
-                status=True,  # Assuming success if stream completes
+                status=True,
             )))
 
         except asyncio.CancelledError:
-            print("[AnthropicHandler] Stream was cancelled")
-            # Handle cancellation by logging it and cleaning up
+            warning("Stream was cancelled during processing", "[AnthropicHandler]")
             asyncio.create_task(finalize_request(ResponseLog(
                 request_id=request_id,
                 response=full_response,
@@ -124,11 +120,10 @@ class AnthropicHandler(BaseHandler):
                 status=False,
                 error_message="Stream was cancelled during processing"
             )))
-            raise  # Re-raise the cancellation
+            raise
 
         except Exception as e:
-            print(f"[AnthropicHandler] Stream error occurred: {str(e)}")
-            print(f"[AnthropicHandler] Stream error type: {type(e)}")
+            error(f"An error occurred during stream handle: {e}", "[AnthropicHandler]")
             asyncio.create_task(finalize_request(ResponseLog(
                 request_id=request_id,
                 response=full_response,
@@ -144,12 +139,9 @@ class AnthropicHandler(BaseHandler):
         """`
         Get a list of available Anthropic models.
         """
+        debug("Fetching available models for Anthropic.", "[AnthropicHandler]")
         try:
-            # Note: Anthropic SDK doesn't have a direct equivalent of OpenAI's `models.list()`.
-            # Officially, they recommend referring to their documentation for model names.
-            # For this reason, we'll return a static list of commonly used models.
-            # You can update this list as new models are released.
-            return [
+            models = [
                 "claude-3-opus-20240229",
                 "claude-3-sonnet-20240229",
                 "claude-3-haiku-20240307",
@@ -157,8 +149,10 @@ class AnthropicHandler(BaseHandler):
                 "claude-2.0",
                 "claude-instant-1.2"
             ]
+            debug(f"Found models: {models}", "[AnthropicHandler]")
+            return models
         except Exception as e:
-            print(f"Error getting Anthropic models: {e}")
+            error(f"Failed to fetch models for Anthropic: {e}", "[AnthropicHandler]")
             return []
         
     @staticmethod
@@ -166,14 +160,19 @@ class AnthropicHandler(BaseHandler):
         """
         This method is used to compile the user prompt into a list of messages for the model.
         """
+        debug(f"Compiling chat for chat_id: {chat_id}", "[AnthropicHandler]")
         history = await chat_history(chat_id)
+        if history:
+            debug(f"Found {len(history)} messages in chat history.", "[AnthropicHandler]")
+        else:
+            warning(f"No history found for chat_id: {chat_id}", "[AnthropicHandler]")
+            
         formatted_messages = []
         for message in history:
             formatted_messages.append({"role": "user", "content": message["request"]})
             formatted_messages.append({"role": "assistant", "content": message["response"]})
         
-        # Add the latest user prompt
         formatted_messages.append({"role": "user", "content": userprompt})
-        
+        debug(f"Chat compiled. Total messages: {len(formatted_messages)}", "[AnthropicHandler]")
         return formatted_messages
         

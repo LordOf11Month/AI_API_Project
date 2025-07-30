@@ -40,6 +40,8 @@ async def dispatch_request(request: APIRequest, client_id: str):
         user_prompt=request.userprompt,
         model_name=request.model,
         system_prompt=request.systemPrompt,
+        provider=request.provider,
+        is_client_api=False,#TODO: remove this
         created_at=datetime.now()
     ))
     info(f"Request initialized with ID: {request_id}", "[Dispatcher]")

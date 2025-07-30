@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import os
 from typing import AsyncIterable
 from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 from sqlalchemy.exc import IntegrityError
 
@@ -40,20 +40,25 @@ async def lifespan(app: FastAPI):
         error(f"Error initializing database: {e}", "[DB]")
         raise
 
-    google_api_key = os.getenv("GOOGLE_API_KEY")
-    if not google_api_key:
+    global isAdvanced
+    isAdvanced = os.getenv('ADVENCE_LOGING_ENABLED', 'false').lower() == 'true'
+    if isAdvanced:
+        warning("Advanced logging enabled", "[Config]")
+    else:
+        warning("Advanced logging disabled", "[Config]")
+
+
+    # Check if all provider API keys are set
+    if not os.getenv("GOOGLE_API_KEY"):
         warning("GOOGLE_API_KEY environment variable not set.", "[Config]")
 
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-    if not openai_api_key:
+    if not os.getenv("OPENAI_API_KEY"):
         warning("OPENAI_API_KEY environment variable not set.", "[Config]")
 
-    anthropic_api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not anthropic_api_key:
+    if not os.getenv("ANTHROPIC_API_KEY"):
         warning("ANTHROPIC_API_KEY environment variable not set.", "[Config]")
         
-    deepseek_api_key = os.getenv("DEEPSEEK_API_KEY")
-    if not deepseek_api_key:
+    if not os.getenv("DEEPSEEK_API_KEY"):
         warning("DEEPSEEK_API_KEY environment variable not set.", "[Config]")
         
     yield
@@ -119,6 +124,11 @@ async def chat(request: APIRequest, client_id: str = Depends(get_current_client_
     Handles a conversational chat request.
     If no chatid is provided, a new chat session is created.
     """
+    # Check if advanced features are enabled
+    if not isAdvanced:
+        warning("Chat endpoint access denied: Advanced features disabled", "[Chat]")
+        raise HTTPException(status_code=403, detail="Chat endpoint is disabled. Advanced features are not enabled.")
+    
     info(f"Received chat request for provider: {request.provider}", "[Chat]")
     debug(f"Model: {request.model}, Client ID: {client_id}, Chat ID: {request.chatid}", "[Chat]")
     

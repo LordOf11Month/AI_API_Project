@@ -12,6 +12,8 @@ class RequestLog(BaseModel):
     model_name: str
     system_prompt: Any  # Typically SystemPrompt from app.routers.Dispatcher
     created_at: datetime
+    provider: str
+    is_client_api: bool
 
 
 class ResponseLog(BaseModel):

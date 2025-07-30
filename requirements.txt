@@ -1,4 +1,15 @@
 fastapi
 uvicorn[standard]
 openai
+anthropic
 google-generativeai
+python-dotenv
+jinja2
+psycopg2
+sqlalchemy
+PyJWT
+passlib
+pydantic
+asyncpg
+greenlet
+bcrypt

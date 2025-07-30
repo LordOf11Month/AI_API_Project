@@ -4,9 +4,17 @@
 
 # Python
 .venv/
-app/__pycache__/
+__pycache__/
+.pycache_central/
+*.py[cod]
+*$py.class
+*.so
 
 
 # VSCode
 .vscode/
 
+
+sandbox.py
+dev_notes.md
+curl_commands.sh

@@ -1,10 +1,9 @@
 import jwt
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 from fastapi import HTTPException
 
-# It's crucial to load the secret key from the environment variables
-# for security reasons. Do not hardcode it.
+
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-default-secret-key")
 ALGORITHM = "HS256"
 
@@ -12,7 +11,7 @@ def create_token(client_id: str, expires_delta: timedelta = timedelta(minutes=15
     """
     Creates a JWT token.
     """
-    expire = datetime.utcnow() + expires_delta
+    expire = datetime.now(timezone.utc) + expires_delta
     to_encode = {"client_id": client_id, "exp": expire}
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt

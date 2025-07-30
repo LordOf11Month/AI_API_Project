@@ -8,11 +8,11 @@ CREATE TABLE clients (
 CREATE TABLE prompt_templates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     --client_id UUID REFERENCES clients(id),
-    name VARCHAR(255) UNIQUE,
+    name VARCHAR(255) UNIQUE NOT NULL,
     prompt TEXT NOT NULL,
     --type VARCHAR(50) CHECK (type IN ('chat', 'translate', 'custom')),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    version SMALLINT DEFAULT 1
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    version SMALLINT DEFAULT 1,
     tenant_fields JSONB DEFAULT NULL
 );
 
@@ -26,7 +26,7 @@ CREATE TABLE chats (
 
 
 CREATE TABLE requests (
-    id UUID PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     chat_id UUID REFERENCES chats(id) ON DELETE SET NULL,
     client_id UUID REFERENCES clients(id),
 

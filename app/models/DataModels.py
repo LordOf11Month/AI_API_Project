@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 class RequestLog(BaseModel):
     client_id: UUID
-    chat_id: UUID
+    chat_id: Optional[UUID] = None
     user_prompt: str
     model_name: str
     system_prompt: Any  # Typically SystemPrompt from app.routers.Dispatcher

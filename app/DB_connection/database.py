@@ -18,12 +18,16 @@ class DatabaseManager:
     def _initialize(self):
         if self._engine is None:
             # Get PostgreSQL connection details from environment variables
-            DB_USER = os.getenv("DB_USER")
-            DB_PASSWORD = os.getenv("DB_PASSWORD")
+            DB_USER = os.getenv("DB_USER","postgres")
+            print(DB_USER)
+            DB_PASSWORD = os.getenv("DB_PASSWORD","")
+            print(DB_PASSWORD)
             DB_HOST = os.getenv("DB_HOST", "localhost")
+            print(DB_HOST)
             DB_PORT = os.getenv("DB_PORT", "5432")
-            DB_NAME = os.getenv("DB_NAME")
-
+            print(DB_PORT)
+            DB_NAME = os.getenv("DB_NAME","AI_api_Center_db")
+            print(DB_NAME)
             # Validate required environment variables
             required_vars = {
                 "DB_USER": DB_USER,
@@ -31,9 +35,9 @@ class DatabaseManager:
                 "DB_NAME": DB_NAME
             }
 
-            missing_vars = [var for var, value in required_vars.items() if not value]
-            if missing_vars:
-                raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
+            # missing_vars = [var for var, value in required_vars.items() if not value]
+            # if missing_vars:
+            #     raise ValueError(f"Missing required environment variables: {', '.join(missing_vars)}")
 
             # Construct PostgreSQL URL
             DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"

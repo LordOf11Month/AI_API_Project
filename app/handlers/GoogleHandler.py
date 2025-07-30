@@ -6,10 +6,8 @@ import os
 import asyncio
 from uuid import UUID
 from app.models.DataModels import ResponseLog
-from app.DB_connection.request_manager import log_response
-
-# NOTE: It's recommended to call genai.configure(api_key="YOUR_API_KEY") 
-# once on application startup (e.g., in your main server.py).
+from app.DB_connection.request_manager import finalize_request
+from app.utils.debug_logger import debug_log
 
 
 class GoogleHandler(BaseHandler):
@@ -21,7 +19,7 @@ class GoogleHandler(BaseHandler):
         if google_api_key:
             genai.configure(api_key=google_api_key)
         else:
-            print("Warning: GOOGLE_API_KEY environment variable not set.")
+            debug_log("Warning: GOOGLE_API_KEY environment variable not set.", "[GoogleHandler]")
         super().__init__(model_name, generation_config, system_instruction)
         # Initialize the model
         self.model = genai.GenerativeModel(
@@ -32,57 +30,114 @@ class GoogleHandler(BaseHandler):
 
     async def sync_handle(self, user_prompt: str,chat_id:UUID | None, request_id: UUID) -> Dict[str, Any]:
         try:
-            
+            debug_log(f"Starting sync_handle for request_id: {request_id}", "[GoogleHandler]")
+            debug_log(f"Compiling messages with prompt: {user_prompt}", "[GoogleHandler]")
             formatted_messages = await self.chat_complier(user_prompt, chat_id)
-            response = await self.model.generate_content_async(formatted_messages)
+            debug_log(f"Formatted messages: {formatted_messages}", "[GoogleHandler]")
+            
+            try:
+                debug_log("Calling Google API...", "[GoogleHandler]")
+                response = await self.model.generate_content_async(formatted_messages)
+                debug_log("Received response from Google API", "[GoogleHandler]")
+            except asyncio.CancelledError:
+                debug_log("Request was cancelled during API call", "[GoogleHandler]")
+                # Start logging but don't await it
+                asyncio.create_task(finalize_request(ResponseLog(
+                    request_id=request_id,
+                    response="Request cancelled",
+                    input_tokens=0,
+                    output_tokens=0,
+                    status=False,
+                    error_message="Request was cancelled during processing"
+                )))
+                raise  # Re-raise the cancellation
 
-            asyncio.create_task(log_response(ResponseLog(
+            # Extract the response text
+            response_text = response.candidates[0].content.parts[0].text
+            debug_log(f"Extracted response text: {response_text[:100]}...", "[GoogleHandler]")
+
+            # Start logging but don't await it
+            asyncio.create_task(finalize_request(ResponseLog(
                 request_id=request_id,
                 input_tokens=response.usage_metadata.prompt_token_count,
                 output_tokens=response.usage_metadata.candidates_token_count,
-                response=response.candidates[0].content.parts[0].text,
+                response=response_text,
                 status=response.candidates[0].finish_reason.name == "STOP",
             )))
-            return response
+
+            debug_log("Successfully completed request", "[GoogleHandler]")
+            # Return response immediately while logging continues in background
+            return {"response": response_text}
+
         except Exception as e:
-            print(f"Error handling Google request: {e}")
-            return f"An error occurred: {e}"
+            if not isinstance(e, asyncio.CancelledError):  # Don't log cancelled errors twice
+                debug_log(f"Error occurred: {str(e)}", "[GoogleHandler]")
+                debug_log(f"Error type: {type(e)}", "[GoogleHandler]")
+                # Start error logging but don't await it
+                asyncio.create_task(finalize_request(ResponseLog(
+                    request_id=request_id,
+                    response="",
+                    input_tokens=0,
+                    output_tokens=0,
+                    status=False,
+                    error_message=str(e)
+                )))
+            raise  # Re-raise the exception to be handled by FastAPI
         
     async def stream_handle(self, user_prompt: str, chat_id: UUID | None, request_id: UUID) -> AsyncIterable[Dict[str, Any]]:
-        
-        async def stream_and_finalize():
-            formatted_messages = await self.chat_complier(user_prompt, chat_id)
-            full_response = ""
-            try:
-                response_stream = await self.model.generate_content_async(formatted_messages, stream=True)
-                
-                async for chunk in response_stream:
-                    if chunk.text:
-                        full_response += chunk.text
-                    yield chunk
-                
-                # After the stream is complete, log the response
-                await log_response(ResponseLog(
-                    request_id=request_id,
-                    response=full_response,
-                    input_tokens=response_stream.usage_metadata.prompt_token_count,
-                    output_tokens=response_stream.usage_metadata.candidates_token_count,
-                    status=True,  # Assuming success if stream completes
-                ))
+        debug_log(f"Starting stream_handle for request_id: {request_id}", "[GoogleHandler]")
+        formatted_messages = await self.chat_complier(user_prompt, chat_id)
+        debug_log(f"Formatted messages for stream: {formatted_messages}", "[GoogleHandler]")
 
-            except Exception as e:
-                print(f"Error handling Google stream: {e}")
-                await log_response(ResponseLog(
-                    request_id=request_id,
-                    response=full_response,
-                    error_message=str(e),
-                    status=False,
-                ))
-                yield f"An error occurred: {e}"
+        full_response = ""
+        try:
+            debug_log("Starting streaming request to Google API", "[GoogleHandler]")
+            response_stream = await self.model.generate_content_async(formatted_messages, stream=True)
+            
+            debug_log("Processing stream chunks", "[GoogleHandler]")
+            async for chunk in response_stream:
+                content = chunk.choices[0].delta.content
+                if content:
+                    full_response += content
+                    debug_log(f"Received chunk: {content[:50]}...", "[GoogleHandler]")
+                yield {"response": content}
+            
+            # After the stream is complete, log the response
+            debug_log("Stream completed, logging to database", "[GoogleHandler]")
+            asyncio.create_task(finalize_request(ResponseLog(
+                request_id=request_id,
+                response=full_response,
+                input_tokens=response_stream.usage_metadata.prompt_token_count,
+                output_tokens=response_stream.usage_metadata.candidates_token_count,
+                status=True,  # Assuming success if stream completes
+            )))
 
-        return stream_and_finalize()
-        
-        
+        except asyncio.CancelledError:
+            debug_log("Stream was cancelled", "[GoogleHandler]")
+            # Handle cancellation by logging it and cleaning up
+            asyncio.create_task(finalize_request(ResponseLog(
+                request_id=request_id,
+                response=full_response,
+                input_tokens=0,
+                output_tokens=0,
+                status=False,
+                error_message="Stream was cancelled during processing"
+            )))
+            raise  # Re-raise the cancellation
+
+        except Exception as e:
+            debug_log(f"Stream error occurred: {str(e)}", "[GoogleHandler]")
+            debug_log(f"Stream error type: {type(e)}", "[GoogleHandler]")
+            asyncio.create_task(finalize_request(ResponseLog(
+                request_id=request_id,
+                response=full_response,
+                error_message=str(e),
+                status=False,
+                input_tokens=0,
+                output_tokens=0
+            )))
+            yield {"error": str(e)}
+
     @staticmethod
     def get_models() -> list[str]:
         """

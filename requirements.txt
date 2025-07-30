@@ -7,6 +7,9 @@ python-dotenv
 jinja2
 psycopg2
 sqlalchemy
-jwt
+PyJWT
 passlib
 pydantic
+asyncpg
+greenlet
+bcrypt

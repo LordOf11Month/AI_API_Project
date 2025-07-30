@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON, BOOLEAN, TEXT, SMALLINT, Enum
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON, BOOLEAN, TEXT, SMALLINT, Enum, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import  relationship
 from sqlalchemy.dialects.postgresql import UUID
@@ -53,6 +53,11 @@ class Request(Base):
     chat = relationship("Chat", back_populates="requests")
     client = relationship("Client")
     prompt_template = relationship("PromptTemplate")
+
+    __table_args__ = (
+        Index('idx_requests_chat_id', 'chat_id'),
+        Index('idx_requests_created_at', 'created_at'),
+    )
 
 class APIKey(Base):
     __tablename__ = 'api_keys'

@@ -1,3 +1,4 @@
+
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from dotenv import load_dotenv
@@ -5,6 +6,8 @@ import os
 from typing import AsyncIterable
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta
+
+from sqlalchemy.exc import IntegrityError
 
 from app.routers.Dispatcher import HANDLERS, dispatch_request
 from app.models.DataModels import APIRequest, ClientCredentials, PromptTemplateCreate
@@ -56,7 +59,7 @@ async def lifespan(app: FastAPI):
     # Cleanup on shutdown
     print("Closing database connections...")
     if db_manager.engine:
-        db_manager.engine.dispose()
+        await db_manager.engine.dispose()
     print("Database connections closed")
 
 
@@ -72,6 +75,8 @@ async def _dispatch_and_respond(request: APIRequest, client_id: str):
     """
     Helper function to dispatch a request and format the HTTP response.
     """
+    print(f"[SERVER] _dispatch_and_respond called")
+    
     response = await dispatch_request(request, client_id)
     
     if request.stream:
@@ -88,6 +93,12 @@ async def generate(request: APIRequest, client_id: str = Depends(get_current_cli
     """
     Handles a one-shot generation request. Chat history is ignored.
     """
+    print("=== [SERVER] GENERATE ENDPOINT CALLED ===")
+    print(f"[SERVER] Provider: {request.provider}")
+    print(f"[SERVER] Model: {request.model}")
+    print(f"[SERVER] Client ID: {client_id}")
+    print("==========================================")
+    
     try:
         # For one-shot generation, explicitly ignore any provided chat history.
         request.chatid = None
@@ -135,8 +146,13 @@ async def signup(credentials: ClientCredentials):
     try:
         client = await create_client(credentials)
         return {"client_id": client.id, "email": client.email}
+    except IntegrityError as e:
+        if "unique constraint" in str(e.orig):
+            raise HTTPException(status_code=400, detail="Email already registered")
+        else:
+            raise HTTPException(status_code=400, detail="Database error")
     except Exception as e:
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/token")

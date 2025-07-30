@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from sqlalchemy.future import select
 from app.DB_connection.database import get_db
 from app.models.DBModels import Client
@@ -11,7 +12,7 @@ async def create_client(credentials: ClientCredentials) -> Client:
     """
     async for db in get_db():
         hashed_password = get_password_hash(credentials.password)
-        new_client = Client(email=credentials.email, password=hashed_password)
+        new_client = Client(email=credentials.email, password=hashed_password, created_at=datetime.now(timezone.utc))
         db.add(new_client)
         await db.commit()
         await db.refresh(new_client)

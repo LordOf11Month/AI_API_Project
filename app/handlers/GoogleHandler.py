@@ -85,17 +85,22 @@ class GoogleHandler(BaseHandler):
         info(f"Handling streaming request for model: {self.model_name}", "[GoogleHandler]")
         Provider_messages = await self.message_complier(messages)
 
-        full_response = ""
+        latency = time.time()
+        response = None
+        first_chunk_received = False
         try:
             debug("Sending streaming request to Google API.", "[GoogleHandler]")
             async for chunk in await self.model.generate_content_async(Provider_messages, stream=True):
                 if chunk and chunk.parts:
+                    if not first_chunk_received:
+                        latency = time.time() - latency
+                        first_chunk_received = True
                     chunk_text = ''.join(part.text for part in chunk.parts)
-                    full_response += chunk_text
                     debug(f"Received stream chunk: {chunk_text[:50]}...", "[GoogleHandler]")
                     yield f"data: {chunk_text}\n\n"
                 else:
                     warning("Received an empty or invalid chunk in stream.", "[GoogleHandler]")
+                response = chunk  # Keep the last chunk to get usage metadata
             
             info("Streaming finished.", "[GoogleHandler]")
 
@@ -107,9 +112,11 @@ class GoogleHandler(BaseHandler):
             debug(f"finalizing full streaming request for request_id: {request_id}", "[GoogleHandler]")
             await finalize_request(
                 request_id, 
-                full_response,
-                input_tokens=response.usage_metadata.prompt_token_count if response.usage_metadata else None,
-                output_tokens=response.usage_metadata.candidates_token_count if response.usage_metadata else None
+                input_tokens=response.usage_metadata.prompt_token_count if response and response.usage_metadata else None,
+                output_tokens=response.usage_metadata.candidates_token_count if response and response.usage_metadata else None,
+                reasoning_tokens=response.usage_metadata.cached_content_token_count if response and response.usage_metadata else None,
+                latency=latency if 'latency' in locals() else None,
+                status=True
             )
             info("Full streaming request finalized successfully.", "[GoogleHandler]")
             yield "data: [DONE]\n\n"

@@ -6,15 +6,17 @@ from app.handlers.OpenAIHandler import OpenAIHandler
 from app.handlers.AnthropicHandler import AnthropicHandler
 from app.handlers.DeepseekHandler import DeepseekHandler
 from app.models.DataModels import RequestInit, GenerateRequest
+from app.models.DBModels import Provider
 from app.DB_connection.request_manager import initialize_request
 from app.utils.console_logger import info, warning, error, debug
 from app.DB_connection.api_manager import get_api_key
-# A mapping of provider names to their handler classes
+
+# A mapping of provider enum to their handler classes
 HANDLERS = {
-    "google": GoogleHandler,
-    "openai": OpenAIHandler,
-    "anthropic": AnthropicHandler,
-    "deepseek": DeepseekHandler,
+    Provider.google: GoogleHandler,
+    Provider.openai: OpenAIHandler,
+    Provider.anthropic: AnthropicHandler,
+    Provider.deepseek: DeepseekHandler,
 }
 
 async def dispatch_request(request: GenerateRequest, client_id: str):
@@ -22,17 +24,17 @@ async def dispatch_request(request: GenerateRequest, client_id: str):
     Dispatches an API request to the appropriate handler.
     This function handles both streaming and non-streaming requests.
     """
-    info(f"Dispatching request for provider: {request.provider}", "[Dispatcher]")
+    info(f"Dispatching request for provider: {request.provider.value}", "[Dispatcher]")
     debug(f"Client ID: {client_id}, Model: {request.model}", "[Dispatcher]")
     
-    handler_class = HANDLERS.get(request.provider.lower())
+    handler_class = HANDLERS.get(request.provider)
     if not handler_class:
-        error(f"Provider '{request.provider}' not found in handlers", "[Dispatcher]")
-        raise ValueError(f"Provider '{request.provider}' is not supported.")
+        error(f"Provider '{request.provider.value}' not found in handlers", "[Dispatcher]")
+        raise ValueError(f"Provider '{request.provider.value}' is not supported.")
 
     debug(f"Found handler class: {handler_class.__name__}", "[Dispatcher]")
 
-    api_key, is_client_api = await get_api_key(request.provider, client_id)
+    api_key, is_client_api = await get_api_key(request.provider.value, client_id)
 
     # Initialize the request and await it immediately
     debug("Initializing request in database...", "[Dispatcher]")
@@ -63,14 +65,12 @@ async def dispatch_request(request: GenerateRequest, client_id: str):
         info("Calling stream_handle for streaming response", "[Dispatcher]")
         return handler_instance.stream_handle(
             messages=request.messages,
-            chat_id=request.chat_id,
             request_id=request_id
         )
     else:
         info("Calling sync_handle for non-streaming response", "[Dispatcher]")
         result = await handler_instance.sync_handle(
             messages=request.messages,
-            chat_id=request.chat_id,
             request_id=request_id
         )
         debug(f"Handler returned result of type {type(result)}", "[Dispatcher]")

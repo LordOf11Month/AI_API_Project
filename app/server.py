@@ -6,12 +6,13 @@ import os
 from typing import AsyncIterable
 from contextlib import asynccontextmanager
 from datetime import timedelta
+import re
 
 from sqlalchemy.exc import IntegrityError
 
 from app.routers.Dispatcher import HANDLERS, dispatch_request
 from app.models.DataModels import BaseRequest, GenerateRequest, ChatRequest, ClientCredentials, PromptTemplateCreate, message
-from app.DB_connection.chat_manager import chat_manager
+from app.DB_connection.chat_manager import create_chat, chat_history, add_message
 from app.DB_connection.client_manager import create_client, authenticate_client
 from app.DB_connection.PromptTemplate_manager import create_prompt_template, update_prompt_template
 from app.auth.token_utils import create_token
@@ -130,12 +131,13 @@ async def chat(request: ChatRequest, client_id: str = Depends(get_current_client
         messages = []
         if request.chat_id is None:
             info("No chat ID provided, creating a new chat session.", "[Chat]")
-            request.chat_id = await chat_manager.create_chat(client_id)
+            request.chat_id = await create_chat(client_id)
             info(f"New chat session created with ID: {request.chat_id}", "[Chat]")
+            await add_message(request.chat_id, request.message)
         else:
             info(f"Using existing chat session with ID: {request.chat_id}", "[Chat]")
-            messages = await chat_manager.chat_history(request.chat_id)
-            await chat_manager.add_message(request.chat_id, request.message)
+            messages = await chat_history(request.chat_id)
+            await add_message(request.chat_id, request.message)
         messages.append(request.message)
 
 
@@ -157,13 +159,19 @@ async def chat(request: ChatRequest, client_id: str = Depends(get_current_client
                     yield chunk
                 # After streaming, save the complete response to database
                 full_response = ''.join(complete_response)
-                await chat_manager.add_message(request.chat_id, message(role='assistant', content=full_response))
+                await add_message(request.chat_id, message(role='assistant', content=full_response))
             
             return StreamingResponse(stream_and_save(), media_type="text/event-stream")
         else:
             # For non-streaming responses, save directly and return
-            await chat_manager.add_message(request.chat_id, message(role='assistant', content=response))
-            return response
+            # Handle both string responses and dict responses from handlers
+            if isinstance(response, dict) and "response" in response:
+                content = response["response"]
+            else:
+                content = response
+            
+            await add_message(request.chat_id, message(role='assistant', content=content))
+            return response,request.chat_id
     
     except ValueError as e:
         error(f"Validation error in chat endpoint: {e}", "[Chat]")
@@ -215,7 +223,7 @@ async def signup(credentials: ClientCredentials):
 
 
 @app.post("/api/token")
-async def get_token(credentials: ClientCredentials, expr: timedelta | None = None):
+async def get_token(credentials: ClientCredentials):
     """
     Get a JWT token for a specific client_id.
     """
@@ -225,7 +233,10 @@ async def get_token(credentials: ClientCredentials, expr: timedelta | None = Non
         warning(f"Failed authentication attempt for email: {credentials.email}", "[Auth]")
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     
-    token_expires = expr or timedelta(hours=2)
+    if credentials.expr is None:
+        token_expires = timedelta(hours=2)
+    else:
+        token_expires = timedelta(**credentials.expr)  # Unpack dict into timedelta
     
     token = create_token(client_id=str(client.id), expires_delta=token_expires)
     info(f"Token generated for client: {client.id}", "[Auth]")
@@ -243,11 +254,9 @@ async def handle_create_template(
     info(f"Creating new prompt template '{template_data.name}' for client: {client_id}", "[Template]")
     try:
         template = await create_prompt_template(template_data)
-        info(f"Template '{template.name}' created successfully with ID: {template.id}", "[Template]")
+        info(f"Template '{template.name}' created successfully", "[Template]")
         return {
-            "id": template.id,
             "name": template.name,
-            "version": template.version,
             "tenant_fields": template.tenant_fields,
             "created_at": template.created_at
         }
@@ -273,7 +282,6 @@ async def handle_update_template(
         template = await update_prompt_template(template_name, template_data)
         info(f"Template '{template_name}' updated successfully to version {template.version}", "[Template]")
         return {
-            "id": template.id,
             "name": template.name,
             "version": template.version,
             "tenant_fields": template.tenant_fields,

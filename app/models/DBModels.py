@@ -4,20 +4,21 @@ from sqlalchemy.orm import  relationship
 from sqlalchemy.dialects.postgresql import UUID
 import uuid
 from datetime import datetime
+from enum import Enum as PyEnum
 
 Base = declarative_base()
 
-class Provider(Enum):
-    GOOGLE = 'google'
-    OPENAI = 'openai'
-    ANTHROPIC = 'anthropic'
-    DEEPSEEK = 'deepseek'
+class Provider(PyEnum):
+    google = 'google'
+    openai = 'openai'
+    anthropic = 'anthropic'
+    deepseek = 'deepseek'
 
-class Role(Enum):
-    USER = 'user'
-    ASSISTANT = 'assistant'
-    SYSTEM = 'system'
-    TOOL = 'tool'
+class Role(PyEnum):
+    user = 'user'
+    assistant = 'assistant'
+    system = 'system'
+    tool = 'tool'
 
 class Client(Base):
     __tablename__ = 'clients'
@@ -32,7 +33,6 @@ class PromptTemplate(Base):
     __tablename__ = 'prompt_templates'
     name = Column(String(255),primary_key=True, nullable=False)
     prompt = Column(TEXT, nullable=False)
-    version = Column(SMALLINT, default=1)
     tenant_fields = Column(JSON, default=None)
     created_at = Column(DateTime, default=datetime.utcnow)
 
@@ -64,11 +64,11 @@ class Request(Base):
     input_tokens = Column(Integer)
     output_tokens = Column(Integer)
     reasoning_tokens = Column(Integer)
-    status = Column(BOOLEAN)
+    status = Column(BOOLEAN, default=False)
     error_message = Column(TEXT, default=None)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_client_api = Column(BOOLEAN, default=False)
-    provider = Column(Enum(Provider, name='provider_enum', native_enum=False))
+    model_provider = Column(Enum(Provider, name='provider_enum', native_enum=False))
     client = relationship("Client")
     latency = Column(Float)
 

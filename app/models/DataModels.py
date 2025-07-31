@@ -4,24 +4,24 @@ from typing import Any, Dict, Optional
 from uuid import UUID
 from pydantic import BaseModel, Field
 
-from app.models.DBModels import Role
+from app.models.DBModels import Role, Provider
 
 
 class RequestInit(BaseModel):
     client_id: UUID
     model_name: str 
     created_at: datetime
-    provider: str
+    provider: Provider
     is_client_api: bool
 
 
 class RequestFinal(BaseModel):
     request_id: UUID
-    input_tokens: int
-    output_tokens: int
-    reasoning_tokens: int
+    input_tokens: Optional[int] = None
+    output_tokens: Optional[int] = None
+    reasoning_tokens: Optional[int] = None
     status: bool
-    latency: float
+    latency: Optional[float] = None
     error_message: Optional[str] = None
 
 class SystemPrompt(BaseModel):
@@ -29,7 +29,7 @@ class SystemPrompt(BaseModel):
     tenants: Dict[str, Any] = Field(default_factory=dict)
 
 class BaseAPIRequest(BaseModel):
-    provider: str
+    provider: Provider
     model: str
     systemPrompt: SystemPrompt
     parameters: Dict[str, Any] = Field(default_factory=dict)
@@ -54,6 +54,7 @@ class BaseRequest(BaseAPIRequest):
 class ClientCredentials(BaseModel):
     email: str
     password: str
+    expr: Optional[Dict[str, int]] = None
 
 
 class PromptTemplateCreate(BaseModel):

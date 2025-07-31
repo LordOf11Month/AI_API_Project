@@ -16,7 +16,7 @@ class BaseHandler(ABC):
         self.API_KEY = API_KEY
 
     @abstractmethod
-    async def sync_handle(self, messages: list[message], request_id: UUID) -> Dict[str, Any]:
+    async def sync_handle(self, messages: list[message], request_id: UUID) -> str:
         """
         Processes a prompt and returns the model's response.
 

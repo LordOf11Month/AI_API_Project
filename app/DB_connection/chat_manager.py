@@ -4,7 +4,6 @@ from uuid import UUID
 from sqlalchemy import select
 from app.DB_connection.database import get_db
 from app.models.DBModels import Chat, Message
-from datetime import datetime, timezone
 from app.utils.console_logger import info, error, debug
 from app.models.DataModels import message
 
@@ -17,8 +16,7 @@ async def create_chat(client_id: UUID) -> UUID:
         debug(f"chat for client_id: {client_id}", "[ChatManager]")
         async for db in get_db():
             new_chat = Chat(
-                client_id=client_id,
-                created_at=datetime.now(timezone.utc)
+                client_id=client_id
             )
             db.add(new_chat)
             await db.commit()
@@ -34,16 +32,16 @@ async def chat_history(chat_id:UUID | None) -> list[Dict[str, str]]:
     Returns the history of a chat.
     '''
     try:
-        messages = []
+        result = []
         if chat_id is None:
-            return messages
+            return result
         async for db in get_db():
             messages_result = await db.execute(select(Message).where(Message.chat_id == chat_id).order_by(Message.index))
             messages = messages_result.scalars().all()
         
             for msg in messages:
-                messages.append({'role':msg.role,"content": msg.content})
-            return messages
+                result.append({'role':msg.role,"content": msg.content})
+            return result
     except Exception as e:
         error(f"Error getting chat history: {e}", "[ChatManager]")
         raise

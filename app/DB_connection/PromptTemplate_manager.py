@@ -86,8 +86,8 @@ async def create_prompt_template(template_data: PromptTemplateCreate) -> PromptT
             name=template_data.name,
             prompt=template_data.prompt,
             tenant_fields=template_data.tenant_fields,
-            version=1
         )
+        
         db.add(new_template)
         await db.commit()
         await db.refresh(new_template)

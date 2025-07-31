@@ -47,14 +47,24 @@ class DeepseekHandler(BaseHandler):
         info(f"Handling synchronous request for model: {self.model_name}", "[DeepseekHandler]")
         formatted_messages = await self.message_complier(messages)
         
+        # Get timeout from environment variable (default: 30 seconds)
+        timeout_seconds = int(os.getenv("API_TIMEOUT_SECONDS", "30"))
+        debug(f"Using API timeout: {timeout_seconds} seconds", "[DeepseekHandler]")
+        
         try:
             debug("Sending request to Deepseek API.", "[DeepseekHandler]")
             latency = time.time()
-            response = await self.client.chat.completions.create(
-                model=self.model_name,
-                messages=formatted_messages,
-                **self.generation_config
+            
+            # Add timeout to the API call
+            response = await asyncio.wait_for(
+                self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=formatted_messages,
+                    **self.generation_config
+                ),
+                timeout=timeout_seconds
             )
+            
             latency = time.time() - latency
             debug("Received synchronous response from API.", "[DeepseekHandler]")
 
@@ -62,29 +72,38 @@ class DeepseekHandler(BaseHandler):
             debug(f"Extracted response content: {response_content[:100]}...", "[DeepseekHandler]")
 
             debug(f"finalizing request for request_id: {request_id}", "[DeepseekHandler]")
-            await finalize_request(
-                request_id,
+            await finalize_request(RequestFinal(
+                request_id=request_id,
                 input_tokens=response.usage.prompt_tokens if response.usage else None,
                 output_tokens=response.usage.completion_tokens if response.usage else None,
-                reasoning_tokens=getattr(response.usage, 'reasoning_tokens', None) if response.usage else None,
+                reasoning_tokens=response.usage.reasoning_tokens if response.usage and hasattr(response.usage, 'reasoning_tokens') else None,
                 latency=latency,
                 status=response.choices[0].finish_reason == "stop"
-            )
+            ))
             info("Synchronous request finalized successfully.", "[DeepseekHandler]")
 
-            return {"response": response_content}
+            return response_content
 
+        except asyncio.TimeoutError:
+            error(f"Deepseek API request timed out after {timeout_seconds} seconds", "[DeepseekHandler]")
+            await finalize_request(RequestFinal(
+                request_id=request_id,
+                latency=timeout_seconds,
+                status=False,
+                error_message=f"Request timed out after {timeout_seconds} seconds"
+            ))
+            raise ValueError(f"API request timed out after {timeout_seconds} seconds")
         except Exception as e:
             error(f"An error occurred during sync handle: {e}", "[DeepseekHandler]")
-            await finalize_request(
-                request_id,
+            await finalize_request(RequestFinal(
+                request_id=request_id,
                 input_tokens=None,
                 output_tokens=None,
                 reasoning_tokens=None,
                 latency=latency if 'latency' in locals() else None,
                 status=False,
                 error_message=str(e)
-            )
+            ))
             raise
         
     async def stream_handle(self, messages: list[message], request_id: UUID) -> AsyncIterable[Dict[str, Any]]:
@@ -94,16 +113,26 @@ class DeepseekHandler(BaseHandler):
         info(f"Handling streaming request for model: {self.model_name}", "[DeepseekHandler]")
         formatted_messages = await self.message_complier(messages)
 
+        # Get timeout from environment variable (default: 60 seconds for streaming)
+        timeout_seconds = int(os.getenv("API_STREAM_TIMEOUT_SECONDS", "60"))
+        debug(f"Using streaming API timeout: {timeout_seconds} seconds", "[DeepseekHandler]")
+
         full_response = ""
         latency = time.time()
         try:
             debug("Sending streaming request to Deepseek API.", "[DeepseekHandler]")
-            response_stream = await self.client.chat.completions.create(
-                model=self.model_name,
-                messages=formatted_messages,
-                **self.generation_config,
-                stream=True
+            
+            # Add timeout to the streaming API call
+            response_stream = await asyncio.wait_for(
+                self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=formatted_messages,
+                    **self.generation_config,
+                    stream=True
+                ),
+                timeout=timeout_seconds
             )
+            
             latency = time.time() - latency
             
             debug("Processing stream chunks...", "[DeepseekHandler]")
@@ -116,20 +145,23 @@ class DeepseekHandler(BaseHandler):
             
             info("Streaming finished.", "[DeepseekHandler]")
 
+        except asyncio.TimeoutError:
+            error(f"Deepseek streaming API request timed out after {timeout_seconds} seconds", "[DeepseekHandler]")
+            yield f"data: Request timed out after {timeout_seconds} seconds\n\n"
         except Exception as e:
             error(f"An error occurred during stream handle: {e}", "[DeepseekHandler]")
             yield f"data: An error occurred: {str(e)}\n\n"
         
         finally:
             debug(f"finalizing full streaming request for request_id: {request_id}", "[DeepseekHandler]")
-            await finalize_request(
-                request_id,
+            await finalize_request(RequestFinal(
+                request_id=request_id,
                 input_tokens=None,  # Token counts not available in streaming for Deepseek
                 output_tokens=None,
                 reasoning_tokens=None,
                 latency=latency if 'latency' in locals() else None,
                 status=True
-            )
+            ))
             info("Full streaming request finalized successfully.", "[DeepseekHandler]")
             yield "data: [DONE]\n\n"
 

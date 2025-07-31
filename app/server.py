@@ -6,15 +6,15 @@ import os
 from typing import AsyncIterable
 from contextlib import asynccontextmanager
 from datetime import timedelta
-import re
 
 from sqlalchemy.exc import IntegrityError
 
 from app.routers.Dispatcher import HANDLERS, dispatch_request
-from app.models.DataModels import BaseRequest, GenerateRequest, ChatRequest, ClientCredentials, PromptTemplateCreate, message
+from app.models.DataModels import GenerateRequest, ChatRequest, ClientCredentials, PromptTemplateCreate, message, APIKeyCreate, APIKeyUpdate
 from app.DB_connection.chat_manager import create_chat, chat_history, add_message
 from app.DB_connection.client_manager import create_client, authenticate_client
 from app.DB_connection.PromptTemplate_manager import create_prompt_template, update_prompt_template
+from app.DB_connection.api_manager import store_api_key, delete_api_key, update_api_key
 from app.auth.token_utils import create_token
 from app.auth.middleware import get_current_client_id
 from app.utils.console_logger import info, warning, error, debug
@@ -293,4 +293,111 @@ async def handle_update_template(
     except Exception as e:
         error(f"Error updating template '{template_name}': {e}", "[Template]")
         raise HTTPException(status_code=500, detail="Failed to update template.")
+
+
+@app.post("/api/apikey", status_code=201)
+async def create_api_key(
+    api_key_data: APIKeyCreate,
+    client_id: str = Depends(get_current_client_id)
+):
+    """
+    Store/create a new API key for a provider. Requires authentication.
+    """
+    info(f"Creating API key for provider: {api_key_data.provider} for client: {client_id}", "[APIKey]")
+    try:
+        await store_api_key(api_key_data.provider.value, client_id, api_key_data.api_key)
+        info(f"API key for provider '{api_key_data.provider}' stored successfully", "[APIKey]")
+        
+        # Return masked API key for security
+        masked_key = api_key_data.api_key[:8] + "*" * (len(api_key_data.api_key) - 12) + api_key_data.api_key[-4:]
+        return {
+            "provider": api_key_data.provider,
+            "masked_api_key": masked_key,
+            "message": "API key stored successfully"
+        }
+    except ValueError as e:
+        warning(f"Invalid data for API key creation: {e}", "[APIKey]")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        error(f"Error storing API key for provider '{api_key_data.provider}': {e}", "[APIKey]")
+        raise HTTPException(status_code=500, detail="Failed to store API key.")
+
+
+# @app.get("/api/apikey/{provider}")
+# async def get_api_key_endpoint(
+#     provider: str,
+#     client_id: str = Depends(get_current_client_id)
+# ):
+#     """
+#     Get the API key for a specific provider. Returns masked key for security.
+#     """
+#     info(f"Retrieving API key for provider: {provider} for client: {client_id}", "[APIKey]")
+#     try:
+#         api_key = await get_api_key(provider, client_id)
+#         if not api_key:
+#             warning(f"No API key found for provider '{provider}' and client: {client_id}", "[APIKey]")
+#             raise HTTPException(status_code=404, detail=f"No API key found for provider '{provider}'")
+        
+#         # Return masked API key for security
+#         masked_key = api_key[:8] + "*" * (len(api_key) - 12) + api_key[-4:]
+#         debug(f"API key retrieved for provider {provider}", "[APIKey]")
+#         return APIKeyResponse(
+#             provider=provider,
+#             masked_api_key=masked_key
+#         )
+#     except HTTPException:
+#         raise
+#     except Exception as e:
+#         error(f"Error retrieving API key for provider '{provider}': {e}", "[APIKey]")
+#         raise HTTPException(status_code=500, detail="Failed to retrieve API key.")
+
+
+@app.put("/api/apikey/{provider}")
+async def update_api_key_endpoint(
+    provider: str,
+    api_key_data: APIKeyUpdate,
+    client_id: str = Depends(get_current_client_id)
+):
+    """
+    Update an existing API key for a provider. Requires authentication.
+    """
+    info(f"Updating API key for provider: {provider} for client: {client_id}", "[APIKey]")
+    try:
+        await update_api_key(provider, client_id, api_key_data.api_key)
+        info(f"API key for provider '{provider}' updated successfully", "[APIKey]")
+        
+        # Return masked API key for security
+        masked_key = api_key_data.api_key[:8] + "*" * (len(api_key_data.api_key) - 12) + api_key_data.api_key[-4:]
+        return {
+            "provider": provider,
+            "masked_api_key": masked_key,
+            "message": "API key updated successfully"
+        }
+    except ValueError as e:
+        warning(f"Invalid data for API key update: {e}", "[APIKey]")
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        error(f"Error updating API key for provider '{provider}': {e}", "[APIKey]")
+        raise HTTPException(status_code=500, detail="Failed to update API key.")
+
+
+@app.delete("/api/apikey/{provider}")
+async def delete_api_key_endpoint(
+    provider: str,
+    client_id: str = Depends(get_current_client_id)
+):
+    """
+    Delete an API key for a specific provider. Requires authentication.
+    """
+    info(f"Deleting API key for provider: {provider} for client: {client_id}", "[APIKey]")
+    try:
+        await delete_api_key(provider, client_id)
+        info(f"API key for provider '{provider}' deleted successfully", "[APIKey]")
+        return {
+            "provider": provider,
+            "message": "API key deleted successfully"
+        }
+    except Exception as e:
+        error(f"Error deleting API key for provider '{provider}': {e}", "[APIKey]")
+        raise HTTPException(status_code=500, detail="Failed to delete API key.")
 

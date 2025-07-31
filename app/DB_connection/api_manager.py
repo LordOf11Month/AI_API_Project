@@ -1,5 +1,5 @@
 from uuid import UUID
-from sqlalchemy import select
+from sqlalchemy import select, delete, update
 from app.DB_connection.database import get_db
 from app.models.DBModels import APIKey
 from app.utils.console_logger import info, error, debug
@@ -85,3 +85,43 @@ async def store_api_key(provider: str, client_id: str, api_key: str):
     except Exception as e:
         error(f"Error storing API key: {e}", "[APIManager]")
         raise
+
+async def delete_api_key(provider: str, client_id: str):
+    '''
+    Deletes the API key for the given provider and client ID.
+    '''
+    try:
+        info(f"Deleting API key for provider: {provider}", "[APIManager]")
+        debug(f"client_id: {client_id}", "[APIManager]")
+        
+        async for db in get_db():
+            await db.execute(
+                delete(APIKey)
+                .where(APIKey.provider == provider)
+                .where(APIKey.client_id == client_id)
+            )
+            await db.commit()
+            
+    except Exception as e:
+        error(f"Error deleting API key: {e}", "[APIManager]")
+        raise
+
+async def update_api_key(provider: str, client_id: str, api_key: str):
+    '''
+    Updates the API key for the given provider and client ID.
+    '''
+    try:
+        info(f"Updating API key for provider: {provider}", "[APIManager]")
+        debug(f"client_id: {client_id}", "[APIManager]")    
+
+        async for db in get_db():
+            await db.execute(
+                update(APIKey)
+                .where(APIKey.provider == provider)
+                .where(APIKey.client_id == client_id)   
+                .values(api_key=UUID(api_key))
+            )
+            await db.commit()
+            
+    except Exception as e:
+        error(f"Error updating API key: {e}", "[APIManager]")

@@ -61,3 +61,16 @@ class PromptTemplateCreate(BaseModel):
     name: str
     prompt: str
     tenant_fields: list[str] = []
+
+class APIKeyCreate(BaseModel):
+    provider: Provider
+    api_key: str
+
+class APIKeyUpdate(BaseModel):
+    api_key: str
+    provider: Provider
+
+class APIKeyResponse(BaseModel):
+    provider: Provider
+    masked_api_key: str
+    created_at: Optional[datetime] = None

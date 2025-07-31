@@ -10,8 +10,8 @@ from datetime import timedelta
 from sqlalchemy.exc import IntegrityError
 
 from app.routers.Dispatcher import HANDLERS, dispatch_request
-from app.models.DataModels import APIRequest, ClientCredentials, PromptTemplateCreate
-from app.DB_connection.chat_manager import create_chat
+from app.models.DataModels import BaseRequest, GenerateRequest, ChatRequest, ClientCredentials, PromptTemplateCreate, message
+from app.DB_connection.chat_manager import chat_manager
 from app.DB_connection.client_manager import create_client, authenticate_client
 from app.DB_connection.PromptTemplate_manager import create_prompt_template, update_prompt_template
 from app.auth.token_utils import create_token
@@ -78,14 +78,13 @@ app = FastAPI(
 )
 
 
-async def _dispatch_and_respond(request: APIRequest, client_id: str):
+async def _dispatch_and_respond(request: GenerateRequest, client_id: str):
     """
     Helper function to dispatch a request and format the HTTP response.
     """
     debug(f"Dispatching request for client: {client_id}", "[Server]")
     
     response = await dispatch_request(request, client_id)
-    
     if request.stream:
         if isinstance(response, AsyncIterable):
             debug("Streaming response initiated", "[Server]")
@@ -99,7 +98,7 @@ async def _dispatch_and_respond(request: APIRequest, client_id: str):
 
 
 @app.post("/api/generate")
-async def generate(request: APIRequest, client_id: str = Depends(get_current_client_id)):
+async def generate(request: GenerateRequest, client_id: str = Depends(get_current_client_id)):
     """
     Handles a one-shot generation request. Chat history is ignored.
     """
@@ -107,8 +106,6 @@ async def generate(request: APIRequest, client_id: str = Depends(get_current_cli
     debug(f"Model: {request.model}, Client ID: {client_id}", "[Generate]")
     
     try:
-        # For one-shot generation, explicitly ignore any provided chat history.
-        request.chatid = None
         return await _dispatch_and_respond(request, client_id)
     except ValueError as e:
         error(f"Validation error in generate endpoint: {e}", "[Generate]")
@@ -119,25 +116,55 @@ async def generate(request: APIRequest, client_id: str = Depends(get_current_cli
 
 
 @app.post("/api/chat")
-async def chat(request: APIRequest, client_id: str = Depends(get_current_client_id)):
+async def chat(request: ChatRequest, client_id: str = Depends(get_current_client_id)):
     """
     Handles a conversational chat request.
     If no chatid is provided, a new chat session is created.
     """
-    # Check if advanced features are enabled
-    if not isAdvanced:
-        warning("Chat endpoint access denied: Advanced features disabled", "[Chat]")
-        raise HTTPException(status_code=403, detail="Chat endpoint is disabled. Advanced features are not enabled.")
+    
     
     info(f"Received chat request for provider: {request.provider}", "[Chat]")
-    debug(f"Model: {request.model}, Client ID: {client_id}, Chat ID: {request.chatid}", "[Chat]")
+    debug(f"Model: {request.model}, Client ID: {client_id}, Chat ID: {request.chat_id}", "[Chat]")
     
     try:
-        if request.chatid is None:
+        messages = []
+        if request.chat_id is None:
             info("No chat ID provided, creating a new chat session.", "[Chat]")
-            request.chatid = await create_chat(client_id)
-            info(f"New chat session created with ID: {request.chatid}", "[Chat]")
-        return await _dispatch_and_respond(request, client_id)
+            request.chat_id = await chat_manager.create_chat(client_id)
+            info(f"New chat session created with ID: {request.chat_id}", "[Chat]")
+        else:
+            info(f"Using existing chat session with ID: {request.chat_id}", "[Chat]")
+            messages = await chat_manager.chat_history(request.chat_id)
+            await chat_manager.add_message(request.chat_id, request.message)
+        messages.append(request.message)
+
+
+
+        response = await _dispatch_and_respond(
+            GenerateRequest(provider=request.provider, 
+                            model=request.model, 
+                            systemPrompt=request.systemPrompt, 
+                            stream=request.stream,
+                            parameters=request.parameters,
+                            messages=messages), client_id)
+        
+        if request.stream:
+            # For streaming responses, we need to collect chunks and save after streaming
+            async def stream_and_save():
+                complete_response = []
+                async for chunk in response.body_iterator:
+                    complete_response.append(chunk.decode())
+                    yield chunk
+                # After streaming, save the complete response to database
+                full_response = ''.join(complete_response)
+                await chat_manager.add_message(request.chat_id, message(role='assistant', content=full_response))
+            
+            return StreamingResponse(stream_and_save(), media_type="text/event-stream")
+        else:
+            # For non-streaming responses, save directly and return
+            await chat_manager.add_message(request.chat_id, message(role='assistant', content=response))
+            return response
+    
     except ValueError as e:
         error(f"Validation error in chat endpoint: {e}", "[Chat]")
         raise HTTPException(status_code=400, detail=str(e))

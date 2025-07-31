@@ -5,10 +5,10 @@ from app.handlers.GoogleHandler import GoogleHandler
 from app.handlers.OpenAIHandler import OpenAIHandler
 from app.handlers.AnthropicHandler import AnthropicHandler
 from app.handlers.DeepseekHandler import DeepseekHandler
-from app.models.DataModels import RequestLog, APIRequest
+from app.models.DataModels import RequestInit, GenerateRequest
 from app.DB_connection.request_manager import initialize_request
 from app.utils.console_logger import info, warning, error, debug
-
+from app.DB_connection.api_manager import get_api_key
 # A mapping of provider names to their handler classes
 HANDLERS = {
     "google": GoogleHandler,
@@ -17,7 +17,7 @@ HANDLERS = {
     "deepseek": DeepseekHandler,
 }
 
-async def dispatch_request(request: APIRequest, client_id: str):
+async def dispatch_request(request: GenerateRequest, client_id: str):
     """
     Dispatches an API request to the appropriate handler.
     This function handles both streaming and non-streaming requests.
@@ -32,16 +32,15 @@ async def dispatch_request(request: APIRequest, client_id: str):
 
     debug(f"Found handler class: {handler_class.__name__}", "[Dispatcher]")
 
+    api_key, is_client_api = await get_api_key(request.provider, client_id)
+
     # Initialize the request and await it immediately
     debug("Initializing request in database...", "[Dispatcher]")
-    request_id = await initialize_request(RequestLog(
+    request_id = await initialize_request(RequestInit(
         client_id=client_id,
-        chat_id=request.chatid,
-        user_prompt=request.userprompt,
         model_name=request.model,
-        system_prompt=request.systemPrompt,
         provider=request.provider,
-        is_client_api=False,#TODO: remove this
+        is_client_api=is_client_api,
         created_at=datetime.now()
     ))
     info(f"Request initialized with ID: {request_id}", "[Dispatcher]")
@@ -55,22 +54,23 @@ async def dispatch_request(request: APIRequest, client_id: str):
     handler_instance = handler_class(
         model_name=request.model,
         generation_config=request.parameters,
-        system_instruction=system_instruction
+        system_instruction=system_instruction,
+        API_KEY=api_key
     )
     debug(f"Handler instance created: {type(handler_instance).__name__}", "[Dispatcher]")
 
     if request.stream:
         info("Calling stream_handle for streaming response", "[Dispatcher]")
         return handler_instance.stream_handle(
-            user_prompt=request.userprompt,
-            chat_id=request.chatid,
+            messages=request.messages,
+            chat_id=request.chat_id,
             request_id=request_id
         )
     else:
         info("Calling sync_handle for non-streaming response", "[Dispatcher]")
         result = await handler_instance.sync_handle(
-            user_prompt=request.userprompt,
-            chat_id=request.chatid,
+            messages=request.messages,
+            chat_id=request.chat_id,
             request_id=request_id
         )
         debug(f"Handler returned result of type {type(result)}", "[Dispatcher]")

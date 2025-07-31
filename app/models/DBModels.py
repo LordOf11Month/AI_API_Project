@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON, BOOLEAN, TEXT, SMALLINT, Enum, Index
+from sqlalchemy import Column, Float, Integer, String, DateTime, ForeignKey, JSON, BOOLEAN, TEXT, SMALLINT, Enum, Index
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import  relationship
 from sqlalchemy.dialects.postgresql import UUID
@@ -12,6 +12,12 @@ class Provider(Enum):
     OPENAI = 'openai'
     ANTHROPIC = 'anthropic'
     DEEPSEEK = 'deepseek'
+
+class Role(Enum):
+    USER = 'user'
+    ASSISTANT = 'assistant'
+    SYSTEM = 'system'
+    TOOL = 'tool'
 
 class Client(Base):
     __tablename__ = 'clients'
@@ -36,32 +42,36 @@ class Chat(Base):
     client_id = Column(UUID(as_uuid=True), ForeignKey('clients.id', ondelete='CASCADE'))
     created_at = Column(DateTime, default=datetime.utcnow)
     client = relationship("Client")
-    requests = relationship("Request", back_populates="chat")
+    messages = relationship("Message", back_populates="chat")
 
+class Message(Base):
+    __tablename__ = 'messages'
+    index = Column(Integer, primary_key=True)
+    chat_id = Column(UUID(as_uuid=True), ForeignKey('chats.id', ondelete='CASCADE'))
+    role = Column(Enum(Role, name='role_enum', native_enum=False))
+    content = Column(TEXT, nullable=False)
+    chat = relationship("Chat", back_populates="messages")
+
+    __table_args__ = (
+    Index('idx_messages_chat_id', 'chat_id'),
+    Index('idx_messages_index', 'index'),
+    )
 class Request(Base):
     __tablename__ = 'requests'
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    chat_id = Column(UUID(as_uuid=True), ForeignKey('chats.id', ondelete='SET NULL'))
     client_id = Column(UUID(as_uuid=True), ForeignKey('clients.id'))
-    prompt_template_name = Column(String(255), ForeignKey('prompt_templates.name'))
-    model_name = Column(TEXT, )
-    request = Column(TEXT)
-    response = Column(TEXT)
+    model_name = Column(TEXT, nullable=False)
     input_tokens = Column(Integer)
     output_tokens = Column(Integer)
+    reasoning_tokens = Column(Integer)
     status = Column(BOOLEAN)
     error_message = Column(TEXT, default=None)
     created_at = Column(DateTime, default=datetime.utcnow)
     is_client_api = Column(BOOLEAN, default=False)
     provider = Column(Enum(Provider, name='provider_enum', native_enum=False))
-    chat = relationship("Chat", back_populates="requests")
     client = relationship("Client")
-    prompt_template = relationship("PromptTemplate")
+    latency = Column(Float)
 
-    __table_args__ = (
-        Index('idx_requests_chat_id', 'chat_id'),
-        Index('idx_requests_created_at', 'created_at'),
-    )
 
 class APIKey(Base):
     __tablename__ = 'api_keys'

@@ -2,18 +2,21 @@ from abc import ABC, abstractmethod
 from typing import Union, AsyncIterable, Dict, Any, Optional
 from uuid import UUID
 
+from app.models.DataModels import message
+
 class BaseHandler(ABC):
     """
     An abstract base class for AI model handlers. It defines a common interface
     for handling generation requests.
     """
-    def __init__(self, model_name: str, generation_config: Dict[str, Any], system_instruction: Optional[str]):
+    def __init__(self, model_name: str, generation_config: Dict[str, Any], system_instruction: Optional[str], API_KEY: str):
         self.model_name = model_name
         self.generation_config = generation_config
         self.system_instruction = system_instruction
+        self.API_KEY = API_KEY
 
     @abstractmethod
-    async def sync_handle(self, messages: list[Dict[str, str]],request_id:UUID) -> Dict[str, Any]:
+    async def sync_handle(self, messages: list[message], request_id: UUID) -> Dict[str, Any]:
         """
         Processes a prompt and returns the model's response.
 
@@ -22,7 +25,7 @@ class BaseHandler(ABC):
         pass
 
     @abstractmethod
-    async def stream_handle(self, messages: list[Dict[str, str]],request_id:UUID) -> AsyncIterable[Dict[str, Any]]:
+    async def stream_handle(self, messages: list[message], request_id: UUID) -> AsyncIterable[Dict[str, Any]]:
         """
         Processes a prompt and returns the model's response as an async iterable of strings.
 
@@ -41,7 +44,7 @@ class BaseHandler(ABC):
 
     @staticmethod
     @abstractmethod
-    def chat_complier(userprompt: str,chat_id:UUID | None) -> any:
+    def message_complier(messages: list[message]) -> any:
        """
        This method is used to compile the user prompt into a list of messages for the model.
        """

@@ -1,22 +1,22 @@
 
+from datetime import time
 import google.generativeai as genai
 from typing import Dict, Any, AsyncIterable
 from uuid import UUID
-import os
 from app.handlers.BaseHandler import BaseHandler
 from app.DB_connection.request_manager import finalize_request
-from app.DB_connection.chat_manager import chat_history
+from app.models.DataModels import RequestFinal, message
 from app.utils.console_logger import info, warning, error, debug
 
 class GoogleHandler(BaseHandler):
     """
     Handles requests for Google's AI models.
     """
-    def __init__(self, model_name: str, generation_config: Dict[str, Any], system_instruction: str | None):
-        super().__init__(model_name, generation_config, system_instruction)
+    def __init__(self, model_name: str, generation_config: Dict[str, Any], system_instruction: str | None, API_KEY: str):
+        super().__init__(model_name, generation_config, system_instruction, API_KEY)
         
         # Configure the generative AI model
-        genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+        genai.configure(api_key=self.API_KEY)
         
         self.model = genai.GenerativeModel(
             model_name=self.model_name,
@@ -25,40 +25,30 @@ class GoogleHandler(BaseHandler):
         )
         debug(f"Google AI model '{self.model_name}' initialized.", "[GoogleHandler]")
 
-    async def chat_complier(self, user_prompt: str, chat_id: UUID | None) -> list[Dict[str, str]]:
+    async def message_complier(self, messages: list[message]) -> list[Dict[str, str]]:
         """
-        Compiles the chat history and the new user prompt into a list of messages
+        Compiles the list of messages
         formatted for the AI model.
         """
-        debug(f"Compiling chat for chat_id: {chat_id}", "[GoogleHandler]")
+        debug(f"Compiling messages", "[GoogleHandler]")
         history = []
-        if chat_id:
-            raw_history = await chat_history(chat_id)
-            if raw_history:
-                debug(f"Found {len(raw_history)} messages in chat history.", "[GoogleHandler]")
-                for record in raw_history:
-                    # Append user prompt
-                    history.append({'role': 'user', 'parts': [record.user_prompt]})
-                    # Append model response
-                    history.append({'role': 'model', 'parts': [record.model_response]})
-            else:
-                warning(f"No history found for chat_id: {chat_id}", "[GoogleHandler]")
-        
-        # Add the latest user prompt
-        history.append({'role': 'user', 'parts': [user_prompt]})
+        for message in messages:
+            history.append({'role': message.role, 'parts': [message.content]})
         debug(f"Chat compiled. Total messages: {len(history)}", "[GoogleHandler]")
         return history
 
-    async def sync_handle(self, user_prompt: str, chat_id: UUID | None, request_id: UUID) -> Dict[str, Any]:
+    async def sync_handle(self, messages: list[message], request_id: UUID) -> Dict[str, Any]:
         """
         Handles a non-streaming (synchronous) request.
         """
         info(f"Handling synchronous request for model: {self.model_name}", "[GoogleHandler]")
-        messages = await self.chat_complier(user_prompt, chat_id)
+        Provider_messages = await self.message_complier(messages)
         
         try:
             debug("Sending request to Google API.", "[GoogleHandler]")
-            response = await self.model.generate_content_async(messages)
+            latency = time.time()
+            response = await self.model.generate_content_async(Provider_messages)
+            latency = time.time() - latency
             
             if not response.parts:
                 warning("Received an empty response from Google API.", "[GoogleHandler]")
@@ -68,26 +58,37 @@ class GoogleHandler(BaseHandler):
                 debug(f"Received synchronous response: {model_response_content[:100]}...", "[GoogleHandler]")
 
             debug(f"finalizing request for request_id: {request_id}", "[GoogleHandler]")
-            await finalize_request(request_id, model_response_content)
+            await finalize_request(
+                request_id, 
+                input_tokens=response.usage_metadata.prompt_token_count if response.usage_metadata else None,
+                output_tokens=response.usage_metadata.candidates_token_count if response.usage_metadata else None,
+                reasoning_tokens=response.usage_metadata.cached_content_token_count if response.usage_metadata else None,
+                latency=latency,
+                status=True
+            )
             info("Synchronous request finalized successfully.", "[GoogleHandler]")
             
             return {"response": model_response_content}
             
         except Exception as e:
             error(f"An error occurred during sync handle: {e}", "[GoogleHandler]")
-            raise
-
-    async def stream_handle(self, user_prompt: str, chat_id: UUID | None, request_id: UUID) -> AsyncIterable[Dict[str, Any]]:
+            await finalize_request(request_id, RequestFinal(
+                request_id=request_id,
+                latency=latency,
+                status=False,
+                error_message=str(e)
+            ))
+    async def stream_handle(self, messages: list[message], request_id: UUID) -> AsyncIterable[Dict[str, Any]]:
         """
         Handles a streaming request.
         """
         info(f"Handling streaming request for model: {self.model_name}", "[GoogleHandler]")
-        messages = await self.chat_complier(user_prompt, chat_id)
-        
+        Provider_messages = await self.message_complier(messages)
+
         full_response = ""
         try:
             debug("Sending streaming request to Google API.", "[GoogleHandler]")
-            async for chunk in await self.model.generate_content_async(messages, stream=True):
+            async for chunk in await self.model.generate_content_async(Provider_messages, stream=True):
                 if chunk and chunk.parts:
                     chunk_text = ''.join(part.text for part in chunk.parts)
                     full_response += chunk_text
@@ -104,7 +105,12 @@ class GoogleHandler(BaseHandler):
         
         finally:
             debug(f"finalizing full streaming request for request_id: {request_id}", "[GoogleHandler]")
-            await finalize_request(request_id, full_response)
+            await finalize_request(
+                request_id, 
+                full_response,
+                input_tokens=response.usage_metadata.prompt_token_count if response.usage_metadata else None,
+                output_tokens=response.usage_metadata.candidates_token_count if response.usage_metadata else None
+            )
             info("Full streaming request finalized successfully.", "[GoogleHandler]")
             yield "data: [DONE]\n\n"
 

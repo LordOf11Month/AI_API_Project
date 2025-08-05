@@ -4,7 +4,7 @@ from app.handlers.BaseHandler import BaseHandler
 import asyncio
 import time
 from uuid import UUID
-from app.models.DataModels import RequestFinal, message
+from app.models.DataModels import RequestFinal, message, Tool
 from app.DB_connection.request_manager import finalize_request
 import os
 from app.utils.console_logger import info, warning, error, debug
@@ -29,18 +29,74 @@ class AnthropicHandler(BaseHandler):
         
         # Add all messages (system instruction is handled separately in Anthropic)
         for msg in messages:
-            if msg.role != "system":  # Anthropic handles system separately
-                formatted_messages.append({"role": msg.role, "content": msg.content})
+            if msg.role.value != "system":  # Anthropic handles system separately
+                formatted_messages.append({"role": msg.role.value, "content": msg.content})
         
         debug(f"Chat compiled. Total messages: {len(formatted_messages)}", "[AnthropicHandler]")
         return formatted_messages
 
-    async def sync_handle(self, messages: list[message], request_id: UUID) -> Dict[str, Any]:
+    def _convert_tools_to_anthropic_format(self, tools: Optional[list[Tool]]) -> Optional[list[Dict[str, Any]]]:
+        """
+        Convert our Tool objects to Anthropic-compatible format.
+        """
+        if not tools:
+            return None
+        
+        anthropic_tools = []
+        for tool in tools:
+            anthropic_tool = {
+                "name": tool.function.name,
+                "description": tool.function.description or "",
+            }
+            if tool.function.parameters:
+                anthropic_tool["input_schema"] = tool.function.parameters
+            
+            anthropic_tools.append(anthropic_tool)
+        
+        return anthropic_tools
+
+    def _standardize_message_response(self, response) -> Dict[str, Any]:
+        """
+        Convert Anthropic response to standardized OpenAI-like message format.
+        """
+        # Create standardized message object
+        standardized = {
+            "id": f"msg_{response.id}",
+            "role": "assistant",
+            "content": []
+        }
+        
+        # Add content from response
+        for content_block in response.content:
+            if content_block.type == "text":
+                standardized["content"].append({
+                    "type": "text", 
+                    "text": content_block.text
+                })
+            elif content_block.type == "tool_use":
+                # Add tool calls if present
+                if "tool_calls" not in standardized:
+                    standardized["tool_calls"] = []
+                standardized["tool_calls"].append({
+                    "id": content_block.id,
+                    "type": "function",
+                    "function": {
+                        "name": content_block.name,
+                        "arguments": content_block.input
+                    }
+                })
+            
+        return standardized
+
+    async def sync_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> Dict[str, Any]:
         """
         Handles a non-streaming (synchronous) request.
         """
         info(f"Handling synchronous request for model: {self.model_name}", "[AnthropicHandler]")
         formatted_messages = await self.message_complier(messages)
+        
+        # Convert tools to Anthropic format
+        anthropic_tools = self._convert_tools_to_anthropic_format(tools)
         
         # Get timeout from environment variable (default: 30 seconds)
         timeout_seconds = int(os.getenv("API_TIMEOUT_SECONDS", "30"))
@@ -50,22 +106,30 @@ class AnthropicHandler(BaseHandler):
             debug("Sending request to Anthropic API.", "[AnthropicHandler]")
             latency = time.time()
             
+            # Prepare request parameters
+            request_params = {
+                "model": self.model_name,
+                "messages": formatted_messages,
+                "system": self.system_instruction,
+                **self.generation_config
+            }
+            
+            # Add tools if present
+            if anthropic_tools:
+                request_params["tools"] = anthropic_tools
+            
             # Add timeout to the API call
             response = await asyncio.wait_for(
-                self.client.messages.create(
-                    model=self.model_name,
-                    messages=formatted_messages,
-                    system=self.system_instruction,
-                    **self.generation_config
-                ),
+                self.client.messages.create(**request_params),
                 timeout=timeout_seconds
             )
             
             latency = time.time() - latency
             debug("Received synchronous response from API.", "[AnthropicHandler]")
 
-            response_content = response.content[0].text
-            debug(f"Extracted response content: {response_content[:100]}...", "[AnthropicHandler]")
+            # Standardize the response to match OpenAI format
+            result = self._standardize_message_response(response)
+            debug(f"Extracted response content: {result['content'][0]['text'][:100] if result['content'] else 'No content'}...", "[AnthropicHandler]")
 
             debug(f"finalizing request for request_id: {request_id}", "[AnthropicHandler]")
             await finalize_request(RequestFinal(
@@ -78,7 +142,7 @@ class AnthropicHandler(BaseHandler):
             ))
             info("Synchronous request finalized successfully.", "[AnthropicHandler]")
 
-            return response_content
+            return result
 
         except asyncio.TimeoutError:
             error(f"Anthropic API request timed out after {timeout_seconds} seconds", "[AnthropicHandler]")
@@ -170,12 +234,11 @@ class AnthropicHandler(BaseHandler):
         debug("Fetching available models for Anthropic.", "[AnthropicHandler]")
         try:
             models = [
+                "claude-3-5-sonnet-20241022",
+                "claude-3-5-haiku-20241022", 
                 "claude-3-opus-20240229",
                 "claude-3-sonnet-20240229",
-                "claude-3-haiku-20240307",
-                "claude-2.1",
-                "claude-2.0",
-                "claude-instant-1.2"
+                "claude-3-haiku-20240307"
             ]
             debug(f"Found models: {models}", "[AnthropicHandler]")
             return models

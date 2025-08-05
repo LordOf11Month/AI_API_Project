@@ -91,7 +91,7 @@ async def create_prompt_template(template_data: PromptTemplateCreate) -> PromptT
         db.add(new_template)
         await db.commit()
         await db.refresh(new_template)
-        info(f"Prompt template created successfully with ID: {new_template.id}", "[PromptManager]")
+        info(f"Prompt template created successfully with ID: {new_template.name}", "[PromptManager]")
         return new_template
 
 async def update_prompt_template(template_name: str, template_data: PromptTemplateCreate) -> PromptTemplate:

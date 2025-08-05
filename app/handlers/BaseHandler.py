@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Union, AsyncIterable, Dict, Any, Optional
 from uuid import UUID
 
-from app.models.DataModels import message
+from app.models.DataModels import message, Tool
 
 class BaseHandler(ABC):
     """
@@ -16,7 +16,7 @@ class BaseHandler(ABC):
         self.API_KEY = API_KEY
 
     @abstractmethod
-    async def sync_handle(self, messages: list[message], request_id: UUID) -> str:
+    async def sync_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> Dict[str, Any]:
         """
         Processes a prompt and returns the model's response.
 

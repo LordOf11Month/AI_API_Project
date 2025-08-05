@@ -8,7 +8,7 @@ from app.handlers.DeepseekHandler import DeepseekHandler
 from app.models.DataModels import RequestInit, GenerateRequest
 from app.models.DBModels import Provider
 from app.DB_connection.request_manager import initialize_request
-from app.utils.console_logger import info, warning, error, debug
+from app.utils.console_logger import info, error, debug
 from app.DB_connection.api_manager import get_api_key
 
 # A mapping of provider enum to their handler classes
@@ -65,13 +65,15 @@ async def dispatch_request(request: GenerateRequest, client_id: str):
         info("Calling stream_handle for streaming response", "[Dispatcher]")
         return handler_instance.stream_handle(
             messages=request.messages,
-            request_id=request_id
+            request_id=request_id,
+            tools=request.tools
         )
     else:
         info("Calling sync_handle for non-streaming response", "[Dispatcher]")
         result = await handler_instance.sync_handle(
             messages=request.messages,
-            request_id=request_id
+            request_id=request_id,
+            tools=request.tools
         )
         debug(f"Handler returned result of type {type(result)}", "[Dispatcher]")
         return result

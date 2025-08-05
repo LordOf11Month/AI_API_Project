@@ -7,7 +7,8 @@ import asyncio
 import os
 from app.handlers.BaseHandler import BaseHandler
 from app.DB_connection.request_manager import finalize_request
-from app.models.DataModels import RequestFinal, message
+from app.models.DataModels import RequestFinal, message, Tool  
+from typing import Optional
 from app.utils.console_logger import info, warning, error, debug
 
 class GoogleHandler(BaseHandler):
@@ -47,7 +48,47 @@ class GoogleHandler(BaseHandler):
         debug(f"Chat compiled. Total messages: {len(history)}", "[GoogleHandler]")
         return history
 
-    async def sync_handle(self, messages: list[message], request_id: UUID) -> Dict[str, Any]:
+    def _standardize_message_response(self, response) -> Dict[str, Any]:
+        """
+        Convert Google AI response to standardized OpenAI-like message format.
+        """
+        # Create standardized message object
+        standardized = {
+            "id": f"msg_google_{hash(str(response))}",
+            "role": "assistant",
+            "content": []
+        }
+        
+        # Add text content from response parts
+        if response.parts:
+            for part in response.parts:
+                if hasattr(part, 'text') and part.text:
+                    standardized["content"].append({
+                        "type": "text", 
+                        "text": part.text
+                    })
+                elif hasattr(part, 'function_call') and part.function_call:
+                    # Add tool calls if present
+                    if "tool_calls" not in standardized:
+                        standardized["tool_calls"] = []
+                    standardized["tool_calls"].append({
+                        "id": f"call_{hash(str(part.function_call))}",
+                        "type": "function",
+                        "function": {
+                            "name": part.function_call.name,
+                            "arguments": dict(part.function_call.args)
+                        }
+                    })
+        else:
+            # Fallback if no parts
+            standardized["content"].append({
+                "type": "text", 
+                "text": "No content returned."
+            })
+            
+        return standardized
+
+    async def sync_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> Dict[str, Any]:
         """
         Handles a non-streaming (synchronous) request.
         """
@@ -62,9 +103,27 @@ class GoogleHandler(BaseHandler):
             debug("Sending request to Google API.", "[GoogleHandler]")
             latency = time.time()
             
+            # Prepare request parameters
+            request_params = Provider_messages
+            
+            # Create Google tools if present
+            google_tools = None
+            if tools:
+                google_tools = []
+                for tool in tools:
+                    # Convert our Tool model to Google's FunctionDeclaration
+                    google_tool = genai.types.FunctionDeclaration(
+                        name=tool.function.name,
+                        description=tool.function.description or "",
+                        parameters=tool.function.parameters or {}
+                    )
+                    google_tools.append(google_tool)
+            
             # Add timeout to the API call
             response = await asyncio.wait_for(
-                self.model.generate_content_async(Provider_messages),
+                self.model.generate_content_async(
+                    **request_params, 
+                    tools=google_tools if google_tools else None),
                 timeout=timeout_seconds
             )
             
@@ -72,10 +131,15 @@ class GoogleHandler(BaseHandler):
             
             if not response.parts:
                 warning("Received an empty response from Google API.", "[GoogleHandler]")
-                model_response_content = "No content returned."
+                # Create a minimal response for empty responses
+                response_mock = type('MockResponse', (), {
+                    'parts': [type('MockPart', (), {'text': 'No content returned.'})()]
+                })()
+                result = self._standardize_message_response(response_mock)
             else:
-                model_response_content = ''.join(part.text for part in response.parts)
-                debug(f"Received synchronous response: {model_response_content[:100]}...", "[GoogleHandler]")
+                # Standardize the response to match OpenAI format
+                result = self._standardize_message_response(response)
+                debug(f"Received synchronous response: {result['content'][0]['text'][:100] if result['content'] else 'No content'}...", "[GoogleHandler]")
 
             debug(f"finalizing request for request_id: {request_id}", "[GoogleHandler]")
             await finalize_request(RequestFinal(
@@ -88,7 +152,7 @@ class GoogleHandler(BaseHandler):
             ))
             info("Synchronous request finalized successfully.", "[GoogleHandler]")
             
-            return model_response_content
+            return result
             
         except asyncio.TimeoutError:
             error(f"Google API request timed out after {timeout_seconds} seconds", "[GoogleHandler]")

@@ -1,6 +1,6 @@
 from __future__ import annotations
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Literal
 from uuid import UUID
 from pydantic import BaseModel, Field
 
@@ -31,6 +31,7 @@ class SystemPrompt(BaseModel):
 class BaseAPIRequest(BaseModel):
     provider: Provider
     model: str
+    tools: Optional[list[Tool]] = None
     systemPrompt: SystemPrompt
     parameters: Dict[str, Any] = Field(default_factory=dict)
     stream: bool = False
@@ -41,21 +42,17 @@ class GenerateRequest(BaseAPIRequest):
 class message(BaseModel):
     role: Role
     content: str
+    
 
 class ChatRequest(BaseAPIRequest):
     message: message
     chat_id: Optional[UUID] = None
 
-class BaseRequest(BaseAPIRequest):
-    messages: Optional[list[message]] = None
-    user_prompt: Optional[str] = None
-    chat_id: Optional[UUID] = None
 
 class ClientCredentials(BaseModel):
     email: str
     password: str
     expr: Optional[Dict[str, int]] = None
-
 
 class PromptTemplateCreate(BaseModel):
     name: str
@@ -74,3 +71,23 @@ class APIKeyResponse(BaseModel):
     provider: Provider
     masked_api_key: str
     created_at: Optional[datetime] = None
+
+class ToolFunction(BaseModel):
+    name: str
+    """The name of the function to call."""
+    
+    description: Optional[str] = None
+    """A description of what the function does, used by the model to choose when and how to call the function."""
+    
+    parameters: Optional[Dict[str, object]] = None
+    """The parameters the functions accepts, described as a JSON Schema object."""
+    
+    strict: Optional[bool] = None
+    """Whether to enable strict schema adherence when generating the function call."""
+
+class Tool(BaseModel):
+    type: Literal["function"] = "function"
+    """The type of the tool. Currently, only `function` is supported."""
+    
+    function: ToolFunction
+    """The function definition."""

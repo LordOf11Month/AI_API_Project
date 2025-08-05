@@ -4,7 +4,7 @@ from app.handlers.BaseHandler import BaseHandler
 import asyncio
 import time
 from uuid import UUID
-from app.models.DataModels import RequestFinal, message
+from app.models.DataModels import RequestFinal, message, Tool
 from app.DB_connection.request_manager import finalize_request
 from app.utils.console_logger import info, warning, error, debug
 import os
@@ -35,12 +35,38 @@ class DeepseekHandler(BaseHandler):
         
         # Add all messages
         for msg in messages:
-            formatted_messages.append({"role": msg.role, "content": msg.content})
+            formatted_messages.append({"role": msg.role.value, "content": msg.content})
         
         debug(f"Chat compiled. Total messages: {len(formatted_messages)}", "[DeepseekHandler]")
         return formatted_messages
 
-    async def sync_handle(self, messages: list[message], request_id: UUID) -> Dict[str, Any]:
+    def _standardize_message_response(self, response) -> Dict[str, Any]:
+        """
+        Convert Deepseek response to standardized OpenAI-like message format.
+        """
+        message_obj = response.choices[0].message
+        
+        # Create standardized message object
+        standardized = {
+            "id": f"msg_{response.id}",
+            "role": message_obj.role,
+            "content": []
+        }
+        
+        # Add text content
+        if message_obj.content:
+            standardized["content"].append({
+                "type": "text", 
+                "text": message_obj.content
+            })
+        
+        # Add tool calls if present
+        if hasattr(message_obj, 'tool_calls') and message_obj.tool_calls:
+            standardized["tool_calls"] = message_obj.tool_calls
+            
+        return standardized
+
+    async def sync_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> Dict[str, Any]:
         """
         Handles a non-streaming (synchronous) request.
         """
@@ -60,6 +86,8 @@ class DeepseekHandler(BaseHandler):
                 self.client.chat.completions.create(
                     model=self.model_name,
                     messages=formatted_messages,
+                    tools=[tool.model_dump() for tool in tools] if tools else None,
+                    tool_choice="auto" if tools else None,
                     **self.generation_config
                 ),
                 timeout=timeout_seconds
@@ -68,8 +96,9 @@ class DeepseekHandler(BaseHandler):
             latency = time.time() - latency
             debug("Received synchronous response from API.", "[DeepseekHandler]")
 
-            response_content = response.choices[0].message.content
-            debug(f"Extracted response content: {response_content[:100]}...", "[DeepseekHandler]")
+            # Standardize the response to match OpenAI format
+            result = self._standardize_message_response(response)
+            debug(f"Extracted response content: {result['content'][0]['text'][:100] if result['content'] else 'No content'}...", "[DeepseekHandler]")
 
             debug(f"finalizing request for request_id: {request_id}", "[DeepseekHandler]")
             await finalize_request(RequestFinal(
@@ -82,7 +111,7 @@ class DeepseekHandler(BaseHandler):
             ))
             info("Synchronous request finalized successfully.", "[DeepseekHandler]")
 
-            return response_content
+            return result
 
         except asyncio.TimeoutError:
             error(f"Deepseek API request timed out after {timeout_seconds} seconds", "[DeepseekHandler]")

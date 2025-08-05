@@ -5,7 +5,7 @@ import asyncio
 import time
 import os
 from uuid import UUID
-from app.models.DataModels import RequestFinal, message
+from app.models.DataModels import RequestFinal, Tool, message
 from app.DB_connection.request_manager import finalize_request
 from app.utils.console_logger import info, warning, error, debug
 
@@ -38,7 +38,7 @@ class OpenAIHandler(BaseHandler):
         debug(f"Chat compiled. Total messages: {len(formatted_messages)}", "[OpenAIHandler]")
         return formatted_messages
 
-    async def sync_handle(self, messages: list[message], request_id: UUID) -> Dict[str, Any]:
+    async def sync_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> Dict[str, Any]:
         """
         Handles a non-streaming (synchronous) request.
         """
@@ -55,10 +55,12 @@ class OpenAIHandler(BaseHandler):
             
             # Add timeout to the API call
             response = await asyncio.wait_for(
-                self.client.chat.completions.create(
+                self.client.responses.create(
                     model=self.model_name,
-                    messages=formatted_messages,
-                    **self.generation_config
+                    input=formatted_messages,
+                    **self.generation_config,
+                    tools=[tool.model_dump() for tool in tools] if tools else None,
+                    tool_choice="auto" if tools else None
                 ),
                 timeout=timeout_seconds
             )
@@ -66,21 +68,21 @@ class OpenAIHandler(BaseHandler):
             latency = time.time() - latency
             debug("Received synchronous response from API.", "[OpenAIHandler]")
 
-            response_content = response.choices[0].message.content
-            debug(f"Extracted response content: {response_content[:100]}...", "[OpenAIHandler]")
+            result = response.output[0]  # Get the first output message
+            debug(f"Extracted response content: {result.content[0].text[:100] if result.content else 'No content'}...", "[OpenAIHandler]")
 
             debug(f"finalizing request for request_id: {request_id}", "[OpenAIHandler]")
             await finalize_request(RequestFinal(
                 request_id=request_id,
-                input_tokens=response.usage.prompt_tokens if response.usage else None,
-                output_tokens=response.usage.completion_tokens if response.usage else None,
-                reasoning_tokens=None,  # OpenAI doesn't provide reasoning tokens
+                input_tokens=response.usage.input_tokens if response.usage else None,
+                output_tokens=response.usage.output_tokens if response.usage else None,
+                reasoning_tokens=response.usage.output_tokens_details.reasoning_tokens if response.usage and response.usage.output_tokens_details else None,
                 latency=latency,
-                status=response.choices[0].finish_reason == "stop"
+                status=response.status == "completed"
             ))
             info("Synchronous request finalized successfully.", "[OpenAIHandler]")
 
-            return response_content
+            return result
 
         except asyncio.TimeoutError:
             error(f"OpenAI API request timed out after {timeout_seconds} seconds", "[OpenAIHandler]")
@@ -137,7 +139,6 @@ class OpenAIHandler(BaseHandler):
             async for chunk in response_stream:
                 content = chunk.choices[0].delta.content
                 if content:
-                    full_response += content
                     debug(f"Received stream chunk: {content[:50]}...", "[OpenAIHandler]")
                     yield f"data: {content}\n\n"
             
@@ -145,9 +146,21 @@ class OpenAIHandler(BaseHandler):
 
         except asyncio.TimeoutError:
             error(f"OpenAI streaming API request timed out after {timeout_seconds} seconds", "[OpenAIHandler]")
+            await finalize_request(RequestFinal(
+                request_id=request_id,
+                latency=None,
+                status=False,
+                error_message=f"Request timed out after {timeout_seconds} seconds"
+            ))
             yield f"data: Request timed out after {timeout_seconds} seconds\n\n"
         except Exception as e:
             error(f"An error occurred during stream handle: {e}", "[OpenAIHandler]")
+            await finalize_request(RequestFinal(
+                request_id=request_id,
+                latency=None,
+                status=False,
+                error_message=str(e)
+            ))
             yield f"data: An error occurred: {str(e)}\n\n"
         
         finally:
@@ -157,7 +170,7 @@ class OpenAIHandler(BaseHandler):
                 input_tokens=None,  # Token counts not available in streaming for OpenAI
                 output_tokens=None,
                 reasoning_tokens=None,
-                latency=None,
+                latency=latency,
                 status=True
             ))
             info("Full streaming request finalized successfully.", "[OpenAIHandler]")
@@ -176,7 +189,7 @@ class OpenAIHandler(BaseHandler):
             debug(f"Found models: {models}", "[OpenAIHandler]")
             return models
         except Exception as e:
-            error(f"Failed to fetch models from OpenAI: {e}", "[OpenAIHandler]")
-            return []
+            error(f"Failed to fetch models from OpenAI, will send default list. error: {e}", "[OpenAIHandler]")
+            return ['gpt-4o-mini', 'gpt-4o', 'gpt-3.5-turbo']
     
     

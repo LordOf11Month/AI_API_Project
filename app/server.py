@@ -9,6 +9,7 @@ from datetime import timedelta
 
 from sqlalchemy.exc import IntegrityError
 
+from app.models.DBModels import Provider
 from app.routers.Dispatcher import HANDLERS, dispatch_request
 from app.models.DataModels import GenerateRequest, ChatRequest, ClientCredentials, PromptTemplateCreate, message, APIKeyCreate, APIKeyUpdate
 from app.DB_connection.chat_manager import create_chat, chat_history, add_message
@@ -40,13 +41,6 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         error(f"Error initializing database: {e}", "[DB]")
         raise
-
-    global isAdvanced
-    isAdvanced = os.getenv('ADVENCE_LOGING_ENABLED', 'false').lower() == 'true'
-    if isAdvanced:
-        warning("Advanced logging enabled", "[Config]")
-    else:
-        warning("Advanced logging disabled", "[Config]")
 
 
     # Check if all provider API keys are set
@@ -187,11 +181,12 @@ async def get_models(provider: str):
     Get available models for a specific provider.
     """
     info(f"Fetching available models for provider: {provider}", "[Models]")
-    if provider not in HANDLERS:
+    provider_enum = Provider(provider.lower())
+    if provider_enum not in HANDLERS:
         warning(f"Attempted to get models for unsupported provider: {provider}", "[Models]")
         raise HTTPException(status_code=400, detail=f"Provider '{provider}' not supported")
     
-    models = HANDLERS[provider].get_models()
+    models = HANDLERS[provider_enum].get_models()
     if models is None:
         error(f"Provider '{provider}' failed to return models.", "[Models]")
         raise HTTPException(status_code=500, detail=f"Could not retrieve models for provider '{provider}'")
@@ -222,7 +217,7 @@ async def signup(credentials: ClientCredentials):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/token")
+@app.get("/api/token")
 async def get_token(credentials: ClientCredentials):
     """
     Get a JWT token for a specific client_id.

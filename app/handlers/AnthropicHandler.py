@@ -4,7 +4,7 @@ from app.handlers.BaseHandler import BaseHandler
 import asyncio
 import time
 from uuid import UUID
-from app.models.DataModels import RequestFinal, message, Tool
+from app.models.DataModels import RequestFinal, Response, message, Tool
 from app.DB_connection.request_manager import finalize_request
 import os
 from app.utils.console_logger import info, warning, error, debug
@@ -45,48 +45,26 @@ class AnthropicHandler(BaseHandler):
         anthropic_tools = []
         for tool in tools:
             anthropic_tool = {
-                "name": tool.function.name,
-                "description": tool.function.description or "",
+                "name": tool.name,
+                "description": tool.description or "",
             }
-            if tool.function.parameters:
-                anthropic_tool["input_schema"] = tool.function.parameters
+            if tool.parameters:
+                anthropic_tool["input_schema"] = tool.parameters
             
             anthropic_tools.append(anthropic_tool)
         
         return anthropic_tools
 
-    def _standardize_message_response(self, response) -> Dict[str, Any]:
+    def response_parser(self, response) -> Response:
         """
-        Convert Anthropic response to standardized OpenAI-like message format.
+        Convert Anthropic response to standardized Response object.
         """
-        # Create standardized message object
-        standardized = {
-            "id": f"msg_{response.id}",
-            "role": "assistant",
-            "content": []
-        }
-        
-        # Add content from response
-        for content_block in response.content:
-            if content_block.type == "text":
-                standardized["content"].append({
-                    "type": "text", 
-                    "text": content_block.text
-                })
-            elif content_block.type == "tool_use":
-                # Add tool calls if present
-                if "tool_calls" not in standardized:
-                    standardized["tool_calls"] = []
-                standardized["tool_calls"].append({
-                    "id": content_block.id,
-                    "type": "function",
-                    "function": {
-                        "name": content_block.name,
-                        "arguments": content_block.input
-                    }
-                })
-            
-        return standardized
+        if response.content[0].type == "text":
+            return Response(type="message", content=response.content[0].text)
+        elif response.content[0].type == "tool_use":
+            return Response(type="function_call", function_name=response.content[0].name, function_args=response.content[0].input)
+        else:
+            return Response(type="error", error="No content returned.")
 
     async def sync_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> Dict[str, Any]:
         """
@@ -128,7 +106,7 @@ class AnthropicHandler(BaseHandler):
             debug("Received synchronous response from API.", "[AnthropicHandler]")
 
             # Standardize the response to match OpenAI format
-            result = self._standardize_message_response(response)
+            result = self.response_parser(response)
             debug(f"Extracted response content: {result['content'][0]['text'][:100] if result['content'] else 'No content'}...", "[AnthropicHandler]")
 
             debug(f"finalizing request for request_id: {request_id}", "[AnthropicHandler]")
@@ -148,11 +126,11 @@ class AnthropicHandler(BaseHandler):
             error(f"Anthropic API request timed out after {timeout_seconds} seconds", "[AnthropicHandler]")
             await finalize_request(RequestFinal(
                 request_id=request_id,
-                latency=timeout_seconds,
+                latency=None,
                 status=False,
                 error_message=f"Request timed out after {timeout_seconds} seconds"
             ))
-            raise ValueError(f"API request timed out after {timeout_seconds} seconds")
+            return Response(type="error", error=f"API request timed out after {timeout_seconds} seconds")
         except Exception as e:
             error(f"An error occurred during sync handle: {e}", "[AnthropicHandler]")
             await finalize_request(RequestFinal(
@@ -164,20 +142,19 @@ class AnthropicHandler(BaseHandler):
                 status=False,
                 error_message=str(e)
             ))
-            raise
+            return Response(type="error", error=str(e))
 
-    async def stream_handle(self, messages: list[message], request_id: UUID) -> AsyncIterable[Dict[str, Any]]:
+    async def stream_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> AsyncIterable[Dict[str, Any]]:
         """
         Handles a streaming request.
         """
         info(f"Handling streaming request for model: {self.model_name}", "[AnthropicHandler]")
         formatted_messages = await self.message_complier(messages)
-        
+            
         # Get timeout from environment variable (default: 60 seconds for streaming)
         timeout_seconds = int(os.getenv("API_STREAM_TIMEOUT_SECONDS", "60"))
         debug(f"Using streaming API timeout: {timeout_seconds} seconds", "[AnthropicHandler]")
         
-        full_response = ""
         latency = time.time()
         final_message = None
         try:
@@ -195,7 +172,6 @@ class AnthropicHandler(BaseHandler):
                     latency = time.time() - latency
                     debug("Processing stream chunks...", "[AnthropicHandler]")
                     async for chunk in response_stream.text_stream:
-                        full_response += chunk
                         debug(f"Received stream chunk: {chunk[:50]}...", "[AnthropicHandler]")
                         yield f"data: {chunk}\n\n"
                     
@@ -208,9 +184,21 @@ class AnthropicHandler(BaseHandler):
 
         except asyncio.TimeoutError:
             error(f"Anthropic streaming API request timed out after {timeout_seconds} seconds", "[AnthropicHandler]")
+            await finalize_request(RequestFinal(
+                request_id=request_id,
+                latency=None,
+                status=False,
+                error_message=f"Request timed out after {timeout_seconds} seconds"
+            ))
             yield f"data: Request timed out after {timeout_seconds} seconds\n\n"
         except Exception as e:
             error(f"An error occurred during stream handle: {e}", "[AnthropicHandler]")
+            await finalize_request(RequestFinal(
+                request_id=request_id,
+                latency=None,
+                status=False,
+                error_message=str(e)
+            ))
             yield f"data: An error occurred: {str(e)}\n\n"
         
         finally:

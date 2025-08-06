@@ -72,22 +72,28 @@ class APIKeyResponse(BaseModel):
     masked_api_key: str
     created_at: Optional[datetime] = None
 
-class ToolFunction(BaseModel):
+class Tool(BaseModel):
     name: str
     """The name of the function to call."""
-    
-    description: Optional[str] = None
-    """A description of what the function does, used by the model to choose when and how to call the function."""
-    
-    parameters: Optional[Dict[str, object]] = None
-    """The parameters the functions accepts, described as a JSON Schema object."""
-    
-    strict: Optional[bool] = None
-    """Whether to enable strict schema adherence when generating the function call."""
 
-class Tool(BaseModel):
-    type: Literal["function"] = "function"
-    """The type of the tool. Currently, only `function` is supported."""
+    parameters: Optional[Dict[str, object]] = None
+    """A JSON schema object describing the parameters of the function."""
+
+    strict: Optional[bool] = None
+    """Whether to enforce strict parameter validation. Default `true`."""
+
+    type: Literal["function"]
+    """The type of the function tool. Always `function`."""
+
+    description: Optional[str]
+    """A description of the function.
+
+    Used by the model to determine whether or not to call the function.
+    """
+
+class Response(BaseModel):
+    type: Literal["message", "function_call", "error"]
+    content: Optional[str] = None
+    function_name: Optional[str] = None
+    function_args: Optional[Dict[str, str]] = None
     
-    function: ToolFunction
-    """The function definition."""

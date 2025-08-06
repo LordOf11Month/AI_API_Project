@@ -25,7 +25,7 @@ class BaseHandler(ABC):
         pass
 
     @abstractmethod
-    async def stream_handle(self, messages: list[message], request_id: UUID) -> AsyncIterable[Dict[str, Any]]:
+    async def stream_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> AsyncIterable[Dict[str, Any]]:
         """
         Processes a prompt and returns the model's response as an async iterable of strings.
 

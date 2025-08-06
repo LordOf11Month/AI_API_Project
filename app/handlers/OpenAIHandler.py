@@ -4,8 +4,9 @@ from app.handlers.BaseHandler import BaseHandler
 import asyncio
 import time
 import os
+import traceback
 from uuid import UUID
-from app.models.DataModels import RequestFinal, Tool, message
+from app.models.DataModels import RequestFinal, Response, Tool, message
 from app.DB_connection.request_manager import finalize_request
 from app.utils.console_logger import info, warning, error, debug
 
@@ -38,6 +39,17 @@ class OpenAIHandler(BaseHandler):
         debug(f"Chat compiled. Total messages: {len(formatted_messages)}", "[OpenAIHandler]")
         return formatted_messages
 
+    async def response_parser(self, response: Dict[str, Any]) -> Response:
+        """
+        Parses the response from the OpenAI API.
+        """
+        if response.output[0].message.content:
+            return Response(type="message", content=response.output[0].message.content)
+        elif response.output[0].message.tool_calls:
+            return Response(type="function_call", function_name=response.output[0].message.tool_calls[0].function.name, function_args=response.output[0].message.tool_calls[0].function.arguments)
+        else:
+            return Response(type="error", error="No content returned.")
+    
     async def sync_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> Dict[str, Any]:
         """
         Handles a non-streaming (synchronous) request.
@@ -59,7 +71,7 @@ class OpenAIHandler(BaseHandler):
                     model=self.model_name,
                     input=formatted_messages,
                     **self.generation_config,
-                    tools=[tool.model_dump() for tool in tools] if tools else None,
+                    tools=tools,
                     tool_choice="auto" if tools else None
                 ),
                 timeout=timeout_seconds
@@ -68,8 +80,6 @@ class OpenAIHandler(BaseHandler):
             latency = time.time() - latency
             debug("Received synchronous response from API.", "[OpenAIHandler]")
 
-            result = response.output[0]  # Get the first output message
-            debug(f"Extracted response content: {result.content[0].text[:100] if result.content else 'No content'}...", "[OpenAIHandler]")
 
             debug(f"finalizing request for request_id: {request_id}", "[OpenAIHandler]")
             await finalize_request(RequestFinal(
@@ -82,7 +92,8 @@ class OpenAIHandler(BaseHandler):
             ))
             info("Synchronous request finalized successfully.", "[OpenAIHandler]")
 
-            return result
+
+            return await self.response_parser(response)
 
         except asyncio.TimeoutError:
             error(f"OpenAI API request timed out after {timeout_seconds} seconds", "[OpenAIHandler]")
@@ -92,9 +103,9 @@ class OpenAIHandler(BaseHandler):
                 status=False,
                 error_message=f"Request timed out after {timeout_seconds} seconds"
             ))
-            raise ValueError(f"API request timed out after {timeout_seconds} seconds")
+            return Response(type="error", error=f"API request timed out after {timeout_seconds} seconds")
         except Exception as e:
-            error(f"An error occurred during sync handle: {e}", "[OpenAIHandler]")
+            error(f"An error occurred during sync handle: {e}\nStack trace: {traceback.format_exc()}", "[OpenAIHandler]")
             await finalize_request(RequestFinal(
                 request_id=request_id,
                 input_tokens=None,
@@ -104,9 +115,9 @@ class OpenAIHandler(BaseHandler):
                 status=False,
                 error_message=str(e)
             ))
-            raise
+            return Response(type="error", error=str(e))
         
-    async def stream_handle(self, messages: list[message], request_id: UUID) -> AsyncIterable[Dict[str, Any]]:
+    async def stream_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> AsyncIterable[Dict[str, Any]]:
         """
         Handles a streaming request.
         """
@@ -119,6 +130,7 @@ class OpenAIHandler(BaseHandler):
 
         full_response = ""
         latency = time.time()
+        tool_calls_buffer = []
         try:
             debug("Sending streaming request to OpenAI API.", "[OpenAIHandler]")
             
@@ -128,7 +140,9 @@ class OpenAIHandler(BaseHandler):
                     model=self.model_name,
                     messages=formatted_messages,
                     **self.generation_config,
-                    stream=True
+                    stream=True,
+                    tools=tools,
+                    tool_choice="auto" if tools else None
                 ),
                 timeout=timeout_seconds
             )
@@ -137,10 +151,36 @@ class OpenAIHandler(BaseHandler):
             
             debug("Processing stream chunks...", "[OpenAIHandler]")
             async for chunk in response_stream:
-                content = chunk.choices[0].delta.content
-                if content:
+                delta = chunk.choices[0].delta
+                
+                # Handle regular content
+                if delta.content:
+                    content = delta.content
+                    full_response += content
                     debug(f"Received stream chunk: {content[:50]}...", "[OpenAIHandler]")
                     yield f"data: {content}\n\n"
+                
+                # Handle tool calls
+                if delta.tool_calls:
+                    for tool_call in delta.tool_calls:
+                        # Ensure we have enough space in the buffer
+                        while len(tool_calls_buffer) <= tool_call.index:
+                            tool_calls_buffer.append({
+                                "id": "",
+                                "type": "function",
+                                "function": {"name": "", "arguments": ""}
+                            })
+                        
+                        # Update the tool call at the correct index
+                        if tool_call.id:
+                            tool_calls_buffer[tool_call.index]["id"] = tool_call.id
+                        if tool_call.function.name:
+                            tool_calls_buffer[tool_call.index]["function"]["name"] = tool_call.function.name
+                        if tool_call.function.arguments:
+                            tool_calls_buffer[tool_call.index]["function"]["arguments"] += tool_call.function.arguments
+                    
+                    # Yield tool call data in a structured format
+                    yield f"data: {{'tool_calls': {tool_calls_buffer}}}\n\n"
             
             info("Streaming finished.", "[OpenAIHandler]")
 
@@ -154,7 +194,7 @@ class OpenAIHandler(BaseHandler):
             ))
             yield f"data: Request timed out after {timeout_seconds} seconds\n\n"
         except Exception as e:
-            error(f"An error occurred during stream handle: {e}", "[OpenAIHandler]")
+            error(f"An error occurred during stream handle: {e}\nStack trace: {traceback.format_exc()}", "[OpenAIHandler]")
             await finalize_request(RequestFinal(
                 request_id=request_id,
                 latency=None,
@@ -178,6 +218,7 @@ class OpenAIHandler(BaseHandler):
 
     @staticmethod
     def get_models() -> list[str]:
+
         """
         Return all available OpenAI models. 
         This is a static method so it can be called without creating an instance.

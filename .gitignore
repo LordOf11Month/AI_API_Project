@@ -22,3 +22,4 @@ dev_notes.md
 curl_commands.sh
 PROVIDER_RULES.md
 test/
+tool_calling_test_commands.md

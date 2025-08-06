@@ -7,9 +7,10 @@ import asyncio
 import os
 from app.handlers.BaseHandler import BaseHandler
 from app.DB_connection.request_manager import finalize_request
-from app.models.DataModels import RequestFinal, message, Tool  
+from app.models.DataModels import RequestFinal, Response, message, Tool  
 from typing import Optional
 from app.utils.console_logger import info, warning, error, debug
+import json
 
 class GoogleHandler(BaseHandler):
     """
@@ -48,45 +49,18 @@ class GoogleHandler(BaseHandler):
         debug(f"Chat compiled. Total messages: {len(history)}", "[GoogleHandler]")
         return history
 
-    def _standardize_message_response(self, response) -> Dict[str, Any]:
+    async def response_parser(self, response) -> Response:
         """
-        Convert Google AI response to standardized OpenAI-like message format.
+        Convert Google AI response to standardized Response object.
         """
-        # Create standardized message object
-        standardized = {
-            "id": f"msg_google_{hash(str(response))}",
-            "role": "assistant",
-            "content": []
-        }
-        
-        # Add text content from response parts
         if response.parts:
             for part in response.parts:
                 if hasattr(part, 'text') and part.text:
-                    standardized["content"].append({
-                        "type": "text", 
-                        "text": part.text
-                    })
+                    return Response(type="message", content=part.text)
                 elif hasattr(part, 'function_call') and part.function_call:
-                    # Add tool calls if present
-                    if "tool_calls" not in standardized:
-                        standardized["tool_calls"] = []
-                    standardized["tool_calls"].append({
-                        "id": f"call_{hash(str(part.function_call))}",
-                        "type": "function",
-                        "function": {
-                            "name": part.function_call.name,
-                            "arguments": dict(part.function_call.args)
-                        }
-                    })
+                    return Response(type="function_call", function_name=part.function_call.name, function_args=part.function_call.args)
         else:
-            # Fallback if no parts
-            standardized["content"].append({
-                "type": "text", 
-                "text": "No content returned."
-            })
-            
-        return standardized
+            return Response(type="error", error="No content returned.")
 
     async def sync_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> Dict[str, Any]:
         """
@@ -113,9 +87,9 @@ class GoogleHandler(BaseHandler):
                 for tool in tools:
                     # Convert our Tool model to Google's FunctionDeclaration
                     google_tool = genai.types.FunctionDeclaration(
-                        name=tool.function.name,
-                        description=tool.function.description or "",
-                        parameters=tool.function.parameters or {}
+                        name=tool.name,
+                        description=tool.description or "",
+                        parameters=tool.parameters or {}
                     )
                     google_tools.append(google_tool)
             
@@ -128,18 +102,7 @@ class GoogleHandler(BaseHandler):
             )
             
             latency = time.time() - latency
-            
-            if not response.parts:
-                warning("Received an empty response from Google API.", "[GoogleHandler]")
-                # Create a minimal response for empty responses
-                response_mock = type('MockResponse', (), {
-                    'parts': [type('MockPart', (), {'text': 'No content returned.'})()]
-                })()
-                result = self._standardize_message_response(response_mock)
-            else:
-                # Standardize the response to match OpenAI format
-                result = self._standardize_message_response(response)
-                debug(f"Received synchronous response: {result['content'][0]['text'][:100] if result['content'] else 'No content'}...", "[GoogleHandler]")
+                
 
             debug(f"finalizing request for request_id: {request_id}", "[GoogleHandler]")
             await finalize_request(RequestFinal(
@@ -152,7 +115,7 @@ class GoogleHandler(BaseHandler):
             ))
             info("Synchronous request finalized successfully.", "[GoogleHandler]")
             
-            return result
+            return await self.response_parser(response)
             
         except asyncio.TimeoutError:
             error(f"Google API request timed out after {timeout_seconds} seconds", "[GoogleHandler]")
@@ -171,8 +134,8 @@ class GoogleHandler(BaseHandler):
                 status=False,
                 error_message=str(e)
             ))
-            raise
-    async def stream_handle(self, messages: list[message], request_id: UUID) -> AsyncIterable[Dict[str, Any]]:
+            return Response(type="error", error=str(e))
+    async def stream_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> AsyncIterable[Dict[str, Any]]:
         """
         Handles a streaming request.
         """
@@ -184,14 +147,30 @@ class GoogleHandler(BaseHandler):
         debug(f"Using streaming API timeout: {timeout_seconds} seconds", "[GoogleHandler]")
 
         latency = time.time()
-        response = None
         first_chunk_received = False
         try:
             debug("Sending streaming request to Google API.", "[GoogleHandler]")
             
+            # Convert tools to Google format
+            google_tools = None
+            if tools:
+                google_tools = []
+                for tool in tools:
+                    # Convert our Tool model to Google's FunctionDeclaration
+                    google_tool = genai.types.FunctionDeclaration(
+                        name=tool.name,
+                        description=tool.description or "",
+                        parameters=tool.parameters or {}
+                    )
+                    google_tools.append(google_tool)
+            
             # Add timeout to the streaming API call
             stream_response = await asyncio.wait_for(
-                self.model.generate_content_async(Provider_messages, stream=True),
+                self.model.generate_content_async(
+                    **Provider_messages, 
+                    stream=True,
+                    tools=google_tools if google_tools else None
+                ),
                 timeout=timeout_seconds
             )
             
@@ -200,9 +179,27 @@ class GoogleHandler(BaseHandler):
                     if not first_chunk_received:
                         latency = time.time() - latency
                         first_chunk_received = True
-                    chunk_text = ''.join(part.text for part in chunk.parts)
-                    debug(f"Received stream chunk: {chunk_text[:50]}...", "[GoogleHandler]")
-                    yield f"data: {chunk_text}\n\n"
+                    
+                    # Process each part in the chunk
+                    for part in chunk.parts:
+                        if hasattr(part, 'text') and part.text:
+                            # Handle text content - same format as OpenAI
+                            debug(f"Received stream chunk: {part.text[:50]}...", "[GoogleHandler]")
+                            yield f"data: {part.text}\n\n"
+                        elif hasattr(part, 'function_call') and part.function_call:
+                            # Handle function calls - convert to OpenAI format for consistency
+                            tool_calls_data = {
+                                "tool_calls": [{
+                                    "id": f"call_{hash(str(part.function_call))}",
+                                    "type": "function",
+                                    "function": {
+                                        "name": part.function_call.name,
+                                        "arguments": json.dumps(dict(part.function_call.args)) if part.function_call.args else "{}"
+                                    }
+                                }]
+                            }
+                            debug(f"Received function call: {part.function_call.name}", "[GoogleHandler]")
+                            yield f"data: {json.dumps(tool_calls_data)}\n\n"
                 else:
                     warning("Received an empty or invalid chunk in stream.", "[GoogleHandler]")
                 response = chunk  # Keep the last chunk to get usage metadata
@@ -211,19 +208,31 @@ class GoogleHandler(BaseHandler):
 
         except asyncio.TimeoutError:
             error(f"Google streaming API request timed out after {timeout_seconds} seconds", "[GoogleHandler]")
+            await finalize_request(RequestFinal(
+                request_id=request_id,
+                latency=None,
+                status=False,
+                error_message=f"Request timed out after {timeout_seconds} seconds"
+            ))
             yield f"data: Request timed out after {timeout_seconds} seconds\n\n"
         except Exception as e:
             error(f"An error occurred during stream handle: {e}", "[GoogleHandler]")
+            await finalize_request(RequestFinal(
+                request_id=request_id,
+                latency=None,
+                status=False,
+                error_message=str(e)
+            ))
             yield f"data: An error occurred: {str(e)}\n\n"
         
         finally:
             debug(f"finalizing full streaming request for request_id: {request_id}", "[GoogleHandler]")
             await finalize_request(RequestFinal(
-                request_id=request_id, 
-                input_tokens=response.usage_metadata.prompt_token_count if response and response.usage_metadata else None,
-                output_tokens=response.usage_metadata.candidates_token_count if response and response.usage_metadata else None,
-                reasoning_tokens=response.usage_metadata.cached_content_token_count if response and response.usage_metadata else None,
-                latency=None,
+                request_id=request_id,
+                input_tokens=response.usage_metadata.prompt_token_count if hasattr(response, 'usage_metadata') and response.usage_metadata else None,
+                output_tokens=response.usage_metadata.candidates_token_count if hasattr(response, 'usage_metadata') and response.usage_metadata else None,
+                reasoning_tokens=response.usage_metadata.cached_content_token_count if hasattr(response, 'usage_metadata') and response.usage_metadata else None,
+                latency=latency,
                 status=True
             ))
             info("Full streaming request finalized successfully.", "[GoogleHandler]")

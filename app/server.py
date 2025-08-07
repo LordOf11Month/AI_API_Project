@@ -176,7 +176,7 @@ async def _dispatch_and_respond(request: GenerateRequest, client_id: str):
         return {"response": response}
 
 
-@app.post("/api/generate")
+@app.get("/api/generate")
 async def generate(request: GenerateRequest, client_id: str = Depends(get_current_client_id)):
     """
     Handle one-shot text generation requests.
@@ -227,11 +227,11 @@ async def generate(request: GenerateRequest, client_id: str = Depends(get_curren
         error(f"Validation error in generate endpoint: {e}", "[Generate]")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        error(f"Internal error in generate endpoint: {e}", "[Generate]")
+        error(f"Internal error in generate endpoint at line {e.__traceback__.tb_lineno}: {e}", "[Generate]")
         raise HTTPException(status_code=500, detail=f"An internal error occurred: {str(e)}")
 
 
-@app.post("/api/chat")
+@app.get("/api/chat")
 async def chat(request: ChatRequest, client_id: str = Depends(get_current_client_id)):
     """
     Handle conversational chat requests with persistent history.
@@ -327,6 +327,8 @@ async def chat(request: ChatRequest, client_id: str = Depends(get_current_client
                 await add_message(request.chat_id, message(role='assistant', content=response.content))
             elif response.type == "function_call":
                 await add_message(request.chat_id, message(role='assistant', content=response.function_name, function_args=response.function_args))
+            elif response.type == "error":
+                raise HTTPException(status_code=500, detail=response.content)
             response.chat_id = request.chat_id
             return response
     
@@ -334,7 +336,7 @@ async def chat(request: ChatRequest, client_id: str = Depends(get_current_client
         error(f"Validation error in chat endpoint: {e}", "[Chat]")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        error(f"Internal error in chat endpoint: {e}", "[Chat]")
+        error(f"Internal error in chat endpoint at line {e.__traceback__.tb_lineno}: {e}", "[Chat]")
         raise HTTPException(status_code=500, detail=f"An internal error occurred: {str(e)}")
 
 
@@ -436,7 +438,7 @@ async def signup(credentials: ClientCredentials):
             error(f"Database integrity error during signup for {credentials.email}: {e}", "[Auth]")
             raise HTTPException(status_code=400, detail="Database error")
     except Exception as e:
-        error(f"Exception during signup for {credentials.email}: {e}", "[Auth]")
+        error(f"Exception during signup for {credentials.email} at line {e.__traceback__.tb_lineno}: {e}", "[Auth]")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -557,7 +559,7 @@ async def handle_create_template(
         warning(f"Conflict creating template '{template_data.name}': {e}", "[Template]")
         raise HTTPException(status_code=409, detail=str(e)) # 409 Conflict
     except Exception as e:
-        error(f"Error creating template '{template_data.name}': {e}", "[Template]")
+        error(f"Error creating template '{template_data.name}' at line {e.__traceback__.tb_lineno}: {e}", "[Template]")
         raise HTTPException(status_code=500, detail="Failed to create template.")
 
 
@@ -623,7 +625,7 @@ async def handle_update_template(
         warning(f"Template '{template_name}' not found for update: {e}", "[Template]")
         raise HTTPException(status_code=404, detail=str(e)) # 404 Not Found
     except Exception as e:
-        error(f"Error updating template '{template_name}': {e}", "[Template]")
+        error(f"Error updating template '{template_name}' at line {e.__traceback__.tb_lineno}: {e}", "[Template]")
         raise HTTPException(status_code=500, detail="Failed to update template.")
 
 
@@ -690,7 +692,7 @@ async def create_api_key(
         warning(f"Invalid data for API key creation: {e}", "[APIKey]")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        error(f"Error storing API key for provider '{api_key_data.provider}': {e}", "[APIKey]")
+        error(f"Error storing API key for provider '{api_key_data.provider}' at line {e.__traceback__.tb_lineno}: {e}", "[APIKey]")
         raise HTTPException(status_code=500, detail="Failed to store API key.")
 
 
@@ -799,7 +801,7 @@ async def update_api_key_endpoint(
         warning(f"Invalid data for API key update: {e}", "[APIKey]")
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        error(f"Error updating API key for provider '{provider}': {e}", "[APIKey]")
+        error(f"Error updating API key for provider '{provider}' at line {e.__traceback__.tb_lineno}: {e}", "[APIKey]")
         raise HTTPException(status_code=500, detail="Failed to update API key.")
 
 
@@ -849,6 +851,6 @@ async def delete_api_key_endpoint(
             "message": "API key deleted successfully"
         }
     except Exception as e:
-        error(f"Error deleting API key for provider '{provider}': {e}", "[APIKey]")
+        error(f"Error deleting API key for provider '{provider}' at line {e.__traceback__.tb_lineno}: {e}", "[APIKey]")
         raise HTTPException(status_code=500, detail="Failed to delete API key.")
 

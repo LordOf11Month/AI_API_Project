@@ -135,7 +135,7 @@ class APIKey(Base):
     Stores client-specific, encrypted API keys for different AI providers.
     """
     __tablename__ = 'api_keys'
-    api_key = Column(UUID(as_uuid=True), primary_key=True)
+    api_key = Column(String(255), primary_key=True)
     client_id = Column(UUID(as_uuid=True), ForeignKey('clients.id'))
     provider = Column(Enum(Provider, name='provider_enum', native_enum=False))
     

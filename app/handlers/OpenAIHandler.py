@@ -105,7 +105,7 @@ class OpenAIHandler(BaseHandler):
             ))
             return Response(type="error", error=f"API request timed out after {timeout_seconds} seconds")
         except Exception as e:
-            error(f"An error occurred during sync handle: {e}\nStack trace: {traceback.format_exc()}", "[OpenAIHandler]")
+            error(f"An error occurred during sync handle at line {e.__traceback__.tb_lineno}: {e} \nStack trace: {traceback.format_exc()}", "[OpenAIHandler]")
             await finalize_request(RequestFinal(
                 request_id=request_id,
                 input_tokens=None,
@@ -136,9 +136,9 @@ class OpenAIHandler(BaseHandler):
             
             # Add timeout to the streaming API call
             response_stream = await asyncio.wait_for(
-                self.client.chat.completions.create(
+                self.client.responses.create(
                     model=self.model_name,
-                    messages=formatted_messages,
+                    input=formatted_messages,
                     **self.generation_config,
                     stream=True,
                     tools=tools,
@@ -150,37 +150,47 @@ class OpenAIHandler(BaseHandler):
             latency = time.time() - latency
             
             debug("Processing stream chunks...", "[OpenAIHandler]")
+            debug(f"Response stream object type: {type(response_stream)}", "[OpenAIHandler]")
+            
+            # Keep track of function calls being built
+            current_function_calls = {}
+            
             async for chunk in response_stream:
-                delta = chunk.choices[0].delta
+                debug(f"Received chunk type: {type(chunk)}, content: {chunk}", "[OpenAIHandler]")
                 
-                # Handle regular content
-                if delta.content:
-                    content = delta.content
+                # Handle function call argument streaming
+                if chunk.type == "response.function_call_arguments.delta":
+                    if chunk.item_id not in current_function_calls:
+                        current_function_calls[chunk.item_id] = {"arguments": ""}
+                    current_function_calls[chunk.item_id]["arguments"] += chunk.delta
+                
+                # Handle function call completion
+                elif chunk.type == "response.function_call_arguments.done":
+                    if chunk.item_id in current_function_calls:
+                        tool_call = {
+                            "id": chunk.item_id,
+                            "type": "function",
+                            "function": {
+                                "name": "get_weather",  # This should be retrieved from the initial tool call event
+                                "arguments": chunk.arguments
+                            }
+                        }
+                        yield f"data: {{'tool_calls': [{tool_call}]}}\n\n"
+                
+                # Handle regular content streaming
+                elif chunk.type == "response.content.delta":
+                    content = chunk.delta
                     full_response += content
-                    debug(f"Received stream chunk: {content[:50]}...", "[OpenAIHandler]")
+                    debug(f"Received content chunk: {content[:50]}...", "[OpenAIHandler]")
                     yield f"data: {content}\n\n"
                 
-                # Handle tool calls
-                if delta.tool_calls:
-                    for tool_call in delta.tool_calls:
-                        # Ensure we have enough space in the buffer
-                        while len(tool_calls_buffer) <= tool_call.index:
-                            tool_calls_buffer.append({
-                                "id": "",
-                                "type": "function",
-                                "function": {"name": "", "arguments": ""}
-                            })
-                        
-                        # Update the tool call at the correct index
-                        if tool_call.id:
-                            tool_calls_buffer[tool_call.index]["id"] = tool_call.id
-                        if tool_call.function.name:
-                            tool_calls_buffer[tool_call.index]["function"]["name"] = tool_call.function.name
-                        if tool_call.function.arguments:
-                            tool_calls_buffer[tool_call.index]["function"]["arguments"] += tool_call.function.arguments
-                    
-                    # Yield tool call data in a structured format
-                    yield f"data: {{'tool_calls': {tool_calls_buffer}}}\n\n"
+                # Handle initial function call setup
+                elif chunk.type == "response.output_item.added":
+                    if hasattr(chunk.item, 'type') and chunk.item.type == 'function_call':
+                        current_function_calls[chunk.item.id] = {
+                            "name": chunk.item.name,
+                            "arguments": ""
+                        }
             
             info("Streaming finished.", "[OpenAIHandler]")
 
@@ -194,7 +204,7 @@ class OpenAIHandler(BaseHandler):
             ))
             yield f"data: Request timed out after {timeout_seconds} seconds\n\n"
         except Exception as e:
-            error(f"An error occurred during stream handle: {e}\nStack trace: {traceback.format_exc()}", "[OpenAIHandler]")
+            error(f"An error occurred during stream handle at line {e.__traceback__.tb_lineno}: {e} \nStack trace: {traceback.format_exc()}", "[OpenAIHandler]")
             await finalize_request(RequestFinal(
                 request_id=request_id,
                 latency=None,

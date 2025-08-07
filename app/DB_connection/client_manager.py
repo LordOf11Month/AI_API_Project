@@ -42,8 +42,8 @@ async def create_client(credentials: ClientCredentials) -> Client:
             info(f"Client created successfully with ID: {new_client.id}", "[ClientManager]")
             return new_client
     except Exception as e:
-        error(f"Error creating client: {e}", "[ClientManager]")
-        raise
+        error(f"Error creating client at line {e.__traceback__.tb_lineno}: {e}", "[ClientManager]")
+        raise e
 
 
 async def authenticate_client(credentials: ClientCredentials) -> Client | None:
@@ -61,12 +61,12 @@ async def authenticate_client(credentials: ClientCredentials) -> Client | None:
         async for db in get_db():
             result = await db.execute(select(Client).where(Client.email == credentials.email))
             client = result.scalars().first()
-        if client and verify_password(credentials.password, client.password):
-            info(f"Client authenticated successfully: {client.id}", "[ClientManager]")
-            return client
+            if client and verify_password(credentials.password, client.password):
+                info(f"Client authenticated successfully: {client.id}", "[ClientManager]")
+                return client
         
         warning(f"Failed authentication attempt for email: {credentials.email}", "[ClientManager]")
         return None 
     except Exception as e:
-        error(f"Error authenticating client: {e}", "[ClientManager]")
-        raise
+        error(f"Error authenticating client at line {e.__traceback__.tb_lineno}: {e}", "[ClientManager]")
+        raise e

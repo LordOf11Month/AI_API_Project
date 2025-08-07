@@ -45,8 +45,8 @@ async def create_chat(client_id: UUID) -> UUID:
             debug(f"chat created with id: {new_chat.id}", "[ChatManager]")
             return new_chat.id 
     except Exception as e:
-        error(f"Error creating chat: {e}", "[ChatManager]")
-        raise
+        error(f"Error creating chat at line {e.__traceback__.tb_lineno}: {e}", "[ChatManager]")
+        raise e
     
 async def chat_history(chat_id:UUID | None) -> List[message]:
     """
@@ -70,8 +70,8 @@ async def chat_history(chat_id:UUID | None) -> List[message]:
                 result.append(message(role=msg.role, content=msg.content))
             return result
     except Exception as e:
-        error(f"Error getting chat history: {e}", "[ChatManager]")
-        raise
+        error(f"Error getting chat history at line {e.__traceback__.tb_lineno}: {e}", "[ChatManager]")
+        raise e
          
 
          
@@ -110,5 +110,6 @@ async def add_message(chat_id:UUID, message: message) -> Message:
             debug(f"message added to chat: {chat_id} with index: {next_index}", "[ChatManager]")
             return new_message
     except Exception as e:
-        error(f"Error adding message: {e}", "[ChatManager]")
-        raise
+        await db.rollback()
+        error(f"Error adding message at line {e.__traceback__.tb_lineno}: {e}", "[ChatManager]")
+        raise e

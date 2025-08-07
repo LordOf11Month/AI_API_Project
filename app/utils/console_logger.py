@@ -162,8 +162,3 @@ def set_config(**kwargs) -> None:
     for key, value in kwargs.items():
         if key in LOG_CONFIG:
             LOG_CONFIG[key] = bool(value)
-
-# Backward compatibility
-def debug_log(message: str, prefix: str = "") -> None:
-    """Backward compatibility for the old debug_log function."""
-    debug(message, prefix) 

@@ -21,7 +21,7 @@ from sqlalchemy import select
 # Project imports
 from app.models.DataModels import RequestInit, RequestFinal
 from app.models.DBModels import Request
-from .database import SessionLocal
+from .database import get_db
 from app.utils.console_logger import debug, info, warning, error
 
 # Local dataclass definitions have been moved to app.models.DataModels
@@ -40,7 +40,7 @@ async def initialize_request(request: RequestInit):
     Returns:
         UUID: The unique identifier of the newly created request record.
     """
-    async with SessionLocal() as db:
+    async for db in get_db():
         try:
             debug(f"Initializing request for client: {request.client_id}", "[RequestManager]")
             # Create the request record
@@ -60,7 +60,7 @@ async def initialize_request(request: RequestInit):
 
         except Exception as e:
             await db.rollback()
-            error(f"Error initializing request: {e}", "[RequestManager]")
+            error(f"Error initializing request at line {e.__traceback__.tb_lineno}: {e}", "[RequestManager]")
             raise e
 
 async def finalize_request(response: RequestFinal):
@@ -73,7 +73,7 @@ async def finalize_request(response: RequestFinal):
     Args:
         response (RequestFinal): An object containing the final request data.
     """
-    async with SessionLocal() as db:
+    async for db in get_db():
         try:
             debug(f"Finalizing request with ID: {response.request_id}", "[RequestManager]")
             result = await db.execute(select(Request).where(Request.id == response.request_id))
@@ -93,5 +93,5 @@ async def finalize_request(response: RequestFinal):
                 warning(f"No request found with ID {response.request_id} to finalize", "[RequestManager]")
         except Exception as e:
             await db.rollback()
-            error(f"Error finalizing request: {e}", "[RequestManager]")
+            error(f"Error finalizing request at line {e.__traceback__.tb_lineno}: {e}", "[RequestManager]")
             raise e

@@ -17,6 +17,7 @@ Version: 1.0.0
 """
 
 import time
+import traceback
 import google.generativeai as genai
 from typing import Dict, Any, AsyncIterable
 from uuid import UUID
@@ -136,7 +137,8 @@ class GoogleHandler(BaseHandler):
             # Add timeout to the API call
             response = await asyncio.wait_for(
                 self.model.generate_content_async(
-                    **request_params, 
+                    **self.generation_config,
+                    contents=request_params, 
                     tools=google_tools if google_tools else None),
                 timeout=timeout_seconds
             )
@@ -165,16 +167,16 @@ class GoogleHandler(BaseHandler):
                 status=False,
                 error_message=f"Request timed out after {timeout_seconds} seconds"
             ))
-            return Response(type="error", error=f"API request timed out after {timeout_seconds} seconds")
+            raise Exception(f"API request timed out after {timeout_seconds} seconds")
         except Exception as e:
-            error(f"An error occurred during sync handle: {e}", "[GoogleHandler]")
+            error(f"An error occurred during sync handle at line {e.__traceback__.tb_lineno}: {e}", "[GoogleHandler]")
             await finalize_request(RequestFinal(
                 request_id=request_id,
                 latency=None,
                 status=False,
                 error_message=str(e)
             ))
-            return Response(type="error", error=str(e))
+            raise e
     async def stream_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> AsyncIterable[Dict[str, Any]]:
         """
         Handles a streaming request to the Google AI API.
@@ -207,7 +209,8 @@ class GoogleHandler(BaseHandler):
             # Add timeout to the streaming API call
             stream_response = await asyncio.wait_for(
                 self.model.generate_content_async(
-                    **Provider_messages, 
+                    **self.generation_config,
+                    contents=Provider_messages, 
                     stream=True,
                     tools=google_tools if google_tools else None
                 ),
@@ -256,7 +259,7 @@ class GoogleHandler(BaseHandler):
             ))
             yield f"data: Request timed out after {timeout_seconds} seconds\n\n"
         except Exception as e:
-            error(f"An error occurred during stream handle: {e}", "[GoogleHandler]")
+            error(f"An error occurred during stream handle at line {e.__traceback__.tb_lineno}: {e} \nStack trace: {traceback.format_exc()}", "[GoogleHandler]")
             await finalize_request(RequestFinal(
                 request_id=request_id,
                 latency=None,

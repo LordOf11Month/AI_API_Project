@@ -102,7 +102,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     try:
         yield session
     except Exception as e:
-        error(f"An error occurred in database session: {e}", "[DBManager]")
+        error(f"An error occurred in database session at line {e.__traceback__.tb_lineno}: {e}", "[DBManager]")
         await session.rollback()
         raise
     finally:

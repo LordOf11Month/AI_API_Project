@@ -52,13 +52,13 @@ async def get_api_key(provider: str, client_id: str) -> Tuple[str, bool]:
             result = await db.execute(
                 select(APIKey)
                 .where(APIKey.provider == provider)
-                .where(APIKey.client_id == client_id)
+                .where(APIKey.client_id == UUID(client_id))
             )
             api_key = result.scalar()
             
             if api_key:
                 debug(f"API key found in database for provider: {provider}", "[APIManager]")
-                return str(api_key.api_key), True
+                return api_key.api_key, True
             
             # If no API key in database, try environment variable
             env_key = os.getenv(f"{provider.upper()}_API_KEY")
@@ -73,8 +73,8 @@ async def get_api_key(provider: str, client_id: str) -> Tuple[str, bool]:
     except ValueError as e:
         raise
     except Exception as e:
-        error(f"Error retrieving API key: {e}", "[APIManager]")
-        raise
+        error(f"Error retrieving API key at line {e.__traceback__.tb_lineno}: {e}", "[APIManager]")
+        raise e
 
 async def store_api_key(provider: str, client_id: str, api_key: str):
     """
@@ -97,18 +97,18 @@ async def store_api_key(provider: str, client_id: str, api_key: str):
             existing_key = await db.execute(
                 select(APIKey)
                 .where(APIKey.provider == provider)
-                .where(APIKey.client_id == client_id)
+                .where(APIKey.client_id == UUID(client_id))
             )
             existing_key = existing_key.scalar()
             
             if existing_key:
                 # Update existing key
-                existing_key.api_key = UUID(api_key)
+                existing_key.api_key = api_key
                 debug(f"Updated existing API key for provider: {provider}", "[APIManager]")
             else:
                 # Create new key
                 new_key = APIKey(
-                    api_key=UUID(api_key),
+                    api_key=api_key,
                     client_id=UUID(client_id),
                     provider=provider
                 )
@@ -118,11 +118,11 @@ async def store_api_key(provider: str, client_id: str, api_key: str):
             await db.commit()
             
     except ValueError as e:
-        error(f"Invalid UUID format for API key or client ID: {e}", "[APIManager]")
-        raise
+        error(f"Invalid UUID format for client ID: {e}", "[APIManager]")
+        raise e
     except Exception as e:
-        error(f"Error storing API key: {e}", "[APIManager]")
-        raise
+        error(f"Error storing API key at line {e.__traceback__.tb_lineno}: {e}", "[APIManager]")
+        raise e
 
 async def delete_api_key(provider: str, client_id: str):
     """
@@ -140,13 +140,13 @@ async def delete_api_key(provider: str, client_id: str):
             await db.execute(
                 delete(APIKey)
                 .where(APIKey.provider == provider)
-                .where(APIKey.client_id == client_id)
+                .where(APIKey.client_id == UUID(client_id))
             )
             await db.commit()
             
     except Exception as e:
-        error(f"Error deleting API key: {e}", "[APIManager]")
-        raise
+        error(f"Error deleting API key at line {e.__traceback__.tb_lineno}: {e}", "[APIManager]")
+        raise e
 
 async def update_api_key(provider: str, client_id: str, api_key: str):
     """
@@ -165,11 +165,11 @@ async def update_api_key(provider: str, client_id: str, api_key: str):
             await db.execute(
                 update(APIKey)
                 .where(APIKey.provider == provider)
-                .where(APIKey.client_id == client_id)   
-                .values(api_key=UUID(api_key))
+                .where(APIKey.client_id == UUID(client_id))   
+                .values(api_key=api_key)
             )
             await db.commit()
             
     except Exception as e:
-        error(f"Error updating API key: {e}", "[APIManager]")
-        return Response(type="error", error=str(e))
+        error(f"Error updating API key at line {e.__traceback__.tb_lineno}: {e}", "[APIManager]")
+        raise e

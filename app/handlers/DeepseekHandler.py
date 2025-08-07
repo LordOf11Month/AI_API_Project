@@ -146,9 +146,9 @@ class DeepseekHandler(BaseHandler):
                 status=False,
                 error_message=f"Request timed out after {timeout_seconds} seconds"
             ))
-            return Response(type="error", error=f"API request timed out after {timeout_seconds} seconds")
+            raise Exception(f"API request timed out after {timeout_seconds} seconds")
         except Exception as e:
-            error(f"An error occurred during sync handle: {e}\nStack trace: {traceback.format_exc()}", "[DeepSeekHandler]")
+            error(f"An error occurred during sync handle at line {e.__traceback__.tb_lineno}: {e} \nStack trace: {traceback.format_exc()}", "[DeepSeekHandler]")
             await finalize_request(RequestFinal(
                 request_id=request_id,
                 input_tokens=None,
@@ -158,7 +158,7 @@ class DeepseekHandler(BaseHandler):
                 status=False,
                 error_message=str(e)
             ))
-            return Response(type="error", error=str(e))
+            raise e
         
     async def stream_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> AsyncIterable[Dict[str, Any]]:
         """
@@ -237,7 +237,7 @@ class DeepseekHandler(BaseHandler):
             ))
             yield f"data: Request timed out after {timeout_seconds} seconds\n\n"
         except Exception as e:
-            error(f"An error occurred during stream handle: {e}\nStack trace: {traceback.format_exc()}", "[DeepSeekHandler]")
+            error(f"An error occurred during stream handle at line {e.__traceback__.tb_lineno}: {e} \nStack trace: {traceback.format_exc()}", "[DeepSeekHandler]")
             await finalize_request(RequestFinal(
                 request_id=request_id,
                 latency=None,

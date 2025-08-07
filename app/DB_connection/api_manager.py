@@ -1,18 +1,49 @@
+"""
+API Key Management Module
+
+This module provides functions for managing client-specific API keys in the
+database. It handles retrieving, storing, updating, and deleting API keys for
+different AI providers, with a fallback to system-wide environment variables.
+
+Key Functions:
+- get_api_key: Retrieves a client's API key, falling back to an environment
+  variable if not found in the database.
+- store_api_key: Stores or updates an API key for a client.
+- delete_api_key: Removes a client's API key from the database.
+- update_api_key: Updates an existing API key for a client.
+
+Author: Ramazan Seçilmiş
+Version: 1.0.0
+"""
+
 from uuid import UUID
 from sqlalchemy import select, delete, update
 from app.DB_connection.database import get_db
 from app.models.DBModels import APIKey
+from app.models.DataModels import Response
 from app.utils.console_logger import info, error, debug
 import os
 from typing import Tuple
 
 async def get_api_key(provider: str, client_id: str) -> Tuple[str, bool]:
-    '''
-    Returns a tuple of (api_key, is_client_api) for the given provider and client ID.
-    If no API key is found in database, falls back to environment variable.
-    is_client_api will be True if the key was found in the database, False if using environment variable.
-    Raises ValueError if no API key is found in either location.
-    '''
+    """
+    Retrieves an API key for a given provider and client.
+    
+    This function first checks the database for a client-specific key. If not
+    found, it falls back to the system-wide environment variable for that provider.
+    
+    Args:
+        provider (str): The AI provider (e.g., 'openai', 'google').
+        client_id (str): The unique identifier of the client.
+        
+    Returns:
+        Tuple[str, bool]: A tuple containing the API key and a boolean indicating
+                          if the key is client-specific (True) or from an
+                          environment variable (False).
+                          
+    Raises:
+        ValueError: If no API key is found in either the database or environment.
+    """
     try:
         info(f"Retrieving API key for provider: {provider}", "[APIManager]")
         debug(f"client_id: {client_id}", "[APIManager]")
@@ -46,10 +77,17 @@ async def get_api_key(provider: str, client_id: str) -> Tuple[str, bool]:
         raise
 
 async def store_api_key(provider: str, client_id: str, api_key: str):
-    '''
-    Stores the API key for the given provider and client ID.
-    If an API key already exists for this provider and client, it will be updated.
-    '''
+    """
+    Stores or updates a client-specific API key in the database.
+    
+    If a key already exists for the client and provider, it will be updated.
+    Otherwise, a new key will be created.
+    
+    Args:
+        provider (str): The AI provider.
+        client_id (str): The client's unique identifier.
+        api_key (str): The API key to store.
+    """
     try:
         info(f"Storing API key for provider: {provider}", "[APIManager]")
         debug(f"client_id: {client_id}", "[APIManager]")
@@ -87,9 +125,13 @@ async def store_api_key(provider: str, client_id: str, api_key: str):
         raise
 
 async def delete_api_key(provider: str, client_id: str):
-    '''
-    Deletes the API key for the given provider and client ID.
-    '''
+    """
+    Deletes a client-specific API key from the database.
+    
+    Args:
+        provider (str): The AI provider.
+        client_id (str): The client's unique identifier.
+    """
     try:
         info(f"Deleting API key for provider: {provider}", "[APIManager]")
         debug(f"client_id: {client_id}", "[APIManager]")
@@ -107,9 +149,14 @@ async def delete_api_key(provider: str, client_id: str):
         raise
 
 async def update_api_key(provider: str, client_id: str, api_key: str):
-    '''
-    Updates the API key for the given provider and client ID.
-    '''
+    """
+    Updates an existing client-specific API key in the database.
+    
+    Args:
+        provider (str): The AI provider.
+        client_id (str): The client's unique identifier.
+        api_key (str): The new API key to set.
+    """
     try:
         info(f"Updating API key for provider: {provider}", "[APIManager]")
         debug(f"client_id: {client_id}", "[APIManager]")    
@@ -125,3 +172,4 @@ async def update_api_key(provider: str, client_id: str, api_key: str):
             
     except Exception as e:
         error(f"Error updating API key: {e}", "[APIManager]")
+        return Response(type="error", error=str(e))

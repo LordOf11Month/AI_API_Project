@@ -60,7 +60,7 @@ from app.DB_connection.chat_manager import create_chat, chat_history, add_messag
 from app.DB_connection.client_manager import create_client, authenticate_client
 from app.DB_connection.PromptTemplate_manager import create_prompt_template, update_prompt_template
 from app.DB_connection.api_manager import store_api_key, delete_api_key, update_api_key
-from app.auth.token_utils import create_token
+from app.utils.token_utils import create_token
 from app.auth.middleware import get_current_client_id
 from app.utils.console_logger import info, warning, error, debug
 
@@ -254,7 +254,7 @@ async def chat(request: ChatRequest, client_id: str = Depends(get_current_client
         
     Returns:
         StreamingResponse: For streaming requests
-        tuple: For non-streaming requests (response_dict, chat_id)
+        Response object: For non-streaming requests
         
     Side Effects:
         - Creates new chat session if chat_id is None
@@ -322,13 +322,13 @@ async def chat(request: ChatRequest, client_id: str = Depends(get_current_client
         else:
             # For non-streaming responses, save directly and return
             # Handle both string responses and dict responses from handlers
-            if isinstance(response, dict) and "response" in response:
-                content = response["response"]
-            else:
-                content = response
-            
-            await add_message(request.chat_id, message(role='assistant', content=content))
-            return response,request.chat_id
+
+            if response.type == "message":
+                await add_message(request.chat_id, message(role='assistant', content=response.content))
+            elif response.type == "function_call":
+                await add_message(request.chat_id, message(role='assistant', content=response.function_name, function_args=response.function_args))
+            response.chat_id = request.chat_id
+            return response
     
     except ValueError as e:
         error(f"Validation error in chat endpoint: {e}", "[Chat]")

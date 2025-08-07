@@ -1,3 +1,19 @@
+"""
+Prompt Template Management Module
+
+This module provides functions for managing and rendering prompt templates from
+the database. It uses Jinja2 for templating and supports a two-layered rendering
+process with an optional root prompt.
+
+Key Functions:
+- get_rendered_prompt: Renders a prompt template with provided data, optionally
+  wrapping it with a root prompt.
+- create_prompt_template: Creates a new prompt template in the database.
+- update_prompt_template: Updates an existing prompt template.
+
+Author: Ramazan Seçilmiş
+Version: 1.0.0
+"""
 
 
 import os
@@ -31,7 +47,19 @@ except FileNotFoundError:
 
 async def get_rendered_prompt(system_prompt: SystemPrompt | None) -> str | None:
     """
-    Renders a prompt template with the provided tenant data.
+    Renders a prompt template with provided data, optionally wrapping it with a root prompt.
+    
+    This function fetches a prompt template from the database, renders it with
+    the provided tenant data, and then optionally renders a root prompt using
+    the result.
+    
+    Args:
+        system_prompt (SystemPrompt | None): The system prompt object containing
+                                             the template name and tenant data.
+                                             
+    Returns:
+        str | None: The fully rendered prompt text, or None if no system prompt
+                    is provided.
     """
     if not system_prompt:
         debug("No system prompt provided, returning None.", "[PromptManager]")
@@ -70,8 +98,16 @@ async def get_rendered_prompt(system_prompt: SystemPrompt | None) -> str | None:
 
 async def create_prompt_template(template_data: PromptTemplateCreate) -> PromptTemplate:
     """
-    Creates a new prompt template.
-    Raises a ValueError if a template with the same name already exists.
+    Creates a new prompt template in the database.
+    
+    Args:
+        template_data (PromptTemplateCreate): The data for the new template.
+        
+    Returns:
+        PromptTemplate: The newly created prompt template object.
+        
+    Raises:
+        ValueError: If a template with the same name already exists.
     """
     info(f"Attempting to create prompt template with name: {template_data.name}", "[PromptManager]")
     async for db in get_db():
@@ -96,8 +132,17 @@ async def create_prompt_template(template_data: PromptTemplateCreate) -> PromptT
 
 async def update_prompt_template(template_name: str, template_data: PromptTemplateCreate) -> PromptTemplate:
     """
-    Updates an existing prompt template and its version is incremented.
-    Raises a ValueError if the template does not exist.
+    Updates an existing prompt template in the database.
+    
+    Args:
+        template_name (str): The name of the template to update.
+        template_data (PromptTemplateCreate): The new data for the template.
+        
+    Returns:
+        PromptTemplate: The updated prompt template object.
+        
+    Raises:
+        ValueError: If the template does not exist.
     """
     info(f"Attempting to update prompt template: {template_name}", "[PromptManager]")
     async for db in get_db():

@@ -1,3 +1,17 @@
+"""
+Client Management Module
+
+This module provides functions for managing client accounts in the database.
+It handles client creation with password hashing and client authentication by
+verifying passwords.
+
+Key Functions:
+- create_client: Creates a new client with a securely hashed password.
+- authenticate_client: Authenticates a client using their email and password.
+
+Author: Ramazan Seçilmiş
+Version: 1.0.0
+"""
 from datetime import datetime, timezone
 from sqlalchemy.future import select
 from app.DB_connection.database import get_db
@@ -10,6 +24,12 @@ from app.utils.console_logger import info, warning, error, debug
 async def create_client(credentials: ClientCredentials) -> Client:
     """
     Creates a new client in the database with a hashed password.
+    
+    Args:
+        credentials (ClientCredentials): The client's email and password.
+        
+    Returns:
+        Client: The newly created client object.
     """
     try:
         info(f"Attempting to create client with email: {credentials.email}", "[ClientManager]")
@@ -28,8 +48,13 @@ async def create_client(credentials: ClientCredentials) -> Client:
 
 async def authenticate_client(credentials: ClientCredentials) -> Client | None:
     """
-    Authenticates a client by email and password.
-    Returns the client object if authentication is successful, otherwise None.
+    Authenticates a client by checking their email and password.
+    
+    Args:
+        credentials (ClientCredentials): The client's email and password.
+        
+    Returns:
+        Client | None: The client object if authentication is successful, otherwise None.
     """
     try:
         info(f"Attempting to authenticate client with email: {credentials.email}", "[ClientManager]")

@@ -1,3 +1,26 @@
+"""
+Custom Console Logger
+
+This module provides a simple, configurable console logger with color-coded
+output for different log levels (INFO, WARNING, ERROR, DEBUG). The logger's
+behavior can be controlled through environment variables.
+
+Key Features:
+- Four log levels: info, warning, error, debug
+- Color-coded output for improved readability
+- Enable/disable log levels and colors via environment variables or functions
+- Optional prefixes for categorizing log messages (e.g., component name)
+
+Environment Variables:
+- LOG_INFO: 'true' or 'false' (default: 'true')
+- LOG_WARNING: 'true' or 'false' (default: 'true')
+- LOG_ERROR: 'true' or 'false' (default: 'true')
+- LOG_DEBUG: 'true' or 'false' (default: 'false')
+- LOG_COLOR: 'true' or 'false' (default: 'true')
+
+Author: Ramazan Seçilmiş
+Version: 1.0.0
+"""
 from dotenv import load_dotenv
 import os
 
@@ -24,7 +47,9 @@ LOG_CONFIG = {
 }
 
 def _format_message(level: str, message: str, prefix: str = "") -> str:
-    """Format message with color and prefix."""
+    """
+    Formats a log message with a colored level header and optional prefix.
+    """
     color_map = {
         'INFO': COLORS['GREEN'],
         'WARNING': COLORS['YELLOW'],
@@ -47,12 +72,13 @@ def _format_message(level: str, message: str, prefix: str = "") -> str:
 
 def info(message: str, prefix: str = "") -> None:
     """
-    Log info messages - shows workflow of service (GREEN header).
-    These logs run nearly always and show the normal workflow.
+    Logs an informational message (green).
+    
+    Used for general workflow and status updates.
     
     Args:
-        message: The message to log
-        prefix: Optional prefix for the log message (e.g., "[Database]")
+        message (str): The message to log.
+        prefix (str, optional): A prefix for categorizing the message.
     """
     if LOG_CONFIG['info_enabled']:
         formatted_message = _format_message("INFO", message, prefix)
@@ -60,12 +86,13 @@ def info(message: str, prefix: str = "") -> None:
 
 def warning(message: str, prefix: str = "") -> None:
     """
-    Log warning messages - shows problems that might cause issues (YELLOW header).
-    System works most of the time but there are potential problems.
+    Logs a warning message (yellow).
+    
+    Used for potential issues that don't stop the application.
     
     Args:
-        message: The message to log
-        prefix: Optional prefix for the log message (e.g., "[Database]")
+        message (str): The message to log.
+        prefix (str, optional): A prefix for categorizing the message.
     """
     if LOG_CONFIG['warning_enabled']:
         formatted_message = _format_message("WARNING", message, prefix)
@@ -73,12 +100,13 @@ def warning(message: str, prefix: str = "") -> None:
 
 def error(message: str, prefix: str = "") -> None:
     """
-    Log error messages - shows critical errors (RED header).
-    These cause unfunctionality and might stop the program.
+    Logs an error message (red).
+    
+    Used for critical errors that may affect functionality.
     
     Args:
-        message: The message to log
-        prefix: Optional prefix for the log message (e.g., "[Database]")
+        message (str): The message to log.
+        prefix (str, optional): A prefix for categorizing the message.
     """
     if LOG_CONFIG['error_enabled']:
         formatted_message = _format_message("ERROR", message, prefix)
@@ -86,12 +114,13 @@ def error(message: str, prefix: str = "") -> None:
 
 def debug(message: str, prefix: str = "") -> None:
     """
-    Log debug messages - shows detailed workflow with variable values (BLUE header).
-    Provides detailed information for debugging purposes.
+    Logs a debug message (blue).
+    
+    Used for detailed information and variable values for debugging.
     
     Args:
-        message: The message to log
-        prefix: Optional prefix for the log message (e.g., "[Database]")
+        message (str): The message to log.
+        prefix (str, optional): A prefix for categorizing the message.
     """
     if LOG_CONFIG['debug_enabled']:
         formatted_message = _format_message("DEBUG", message, prefix)
@@ -99,39 +128,36 @@ def debug(message: str, prefix: str = "") -> None:
 
 # Configuration utilities
 def enable_log_level(level: str) -> None:
-    """Enable a specific log level."""
+    """Enables a specific log level (e.g., 'info', 'debug')."""
     key = f"{level.lower()}_enabled"
     if key in LOG_CONFIG:
         LOG_CONFIG[key] = True
 
 def disable_log_level(level: str) -> None:
-    """Disable a specific log level."""
+    """Disables a specific log level."""
     key = f"{level.lower()}_enabled"
     if key in LOG_CONFIG:
         LOG_CONFIG[key] = False
 
 def enable_colors() -> None:
-    """Enable colored output."""
+    """Enables colored log output."""
     LOG_CONFIG['color_enabled'] = True
 
 def disable_colors() -> None:
-    """Disable colored output."""
+    """Disables colored log output."""
     LOG_CONFIG['color_enabled'] = False
 
 def get_config() -> dict:
-    """Get current logging configuration."""
+    """Returns the current logging configuration."""
     return LOG_CONFIG.copy()
 
 def set_config(**kwargs) -> None:
     """
-    Set logging configuration.
+    Sets multiple logging configuration options at once.
     
     Args:
-        info_enabled: Enable/disable info logs
-        warning_enabled: Enable/disable warning logs
-        error_enabled: Enable/disable error logs
-        debug_enabled: Enable/disable debug logs
-        color_enabled: Enable/disable colored output
+        **kwargs: Keyword arguments for configuration options (e.g.,
+                  info_enabled=True, color_enabled=False).
     """
     for key, value in kwargs.items():
         if key in LOG_CONFIG:
@@ -139,5 +165,5 @@ def set_config(**kwargs) -> None:
 
 # Backward compatibility
 def debug_log(message: str, prefix: str = "") -> None:
-    """Backward compatibility for existing debug_log function."""
+    """Backward compatibility for the old debug_log function."""
     debug(message, prefix) 

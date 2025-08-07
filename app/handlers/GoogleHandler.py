@@ -1,3 +1,20 @@
+"""
+Google AI Provider Handler
+
+This module provides the handler implementation for interacting with Google's
+Generative AI models (e.g., Gemini). It adapts the common handler interface to
+the specific requirements of the Google AI SDK.
+
+Key Features:
+- Handles both synchronous and streaming generation requests
+- Converts standardized message and tool formats to Google's format
+- Fetches and lists available Google AI models
+- Manages API key configuration and client initialization
+- Parses Google's response into a standardized format
+
+Author: Ramazan Seçilmiş
+Version: 1.0.0
+"""
 
 import time
 import google.generativeai as genai
@@ -14,9 +31,21 @@ import json
 
 class GoogleHandler(BaseHandler):
     """
-    Handles requests for Google's AI models.
+    Handler for Google's Generative AI models.
+    
+    This class implements the BaseHandler interface to interact with Google's
+    AI models, handling message compilation, tool conversion, and response parsing.
     """
     def __init__(self, model_name: str, generation_config: Dict[str, Any], system_instruction: str | None, API_KEY: str):
+        """
+        Initializes the GoogleHandler.
+        
+        Args:
+            model_name (str): The name of the Google model to use.
+            generation_config (Dict[str, Any]): Generation parameters for the model.
+            system_instruction (str | None): System-level instructions for the model.
+            API_KEY (str): The API key for Google AI services.
+        """
         super().__init__(model_name, generation_config, system_instruction, API_KEY)
         
         # Configure the generative AI model
@@ -36,8 +65,13 @@ class GoogleHandler(BaseHandler):
 
     async def message_complier(self, messages: list[message]) -> list[Dict[str, str]]:
         """
-        Compiles the list of messages
-        formatted for the AI model.
+        Compiles a list of messages into the format expected by Google's API.
+        
+        Args:
+            messages (list[message]): A list of standardized message objects.
+            
+        Returns:
+            list[Dict[str, str]]: A list of messages formatted for the Google API.
         """
         debug(f"Compiling messages", "[GoogleHandler]")
         history = []
@@ -51,7 +85,13 @@ class GoogleHandler(BaseHandler):
 
     async def response_parser(self, response) -> Response:
         """
-        Convert Google AI response to standardized Response object.
+        Parses the Google AI response into a standardized Response object.
+        
+        Args:
+            response: The response object from the Google AI API.
+            
+        Returns:
+            Response: A standardized response object.
         """
         if response.parts:
             for part in response.parts:
@@ -62,9 +102,9 @@ class GoogleHandler(BaseHandler):
         else:
             return Response(type="error", error="No content returned.")
 
-    async def sync_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> Dict[str, Any]:
+    async def sync_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> Response:
         """
-        Handles a non-streaming (synchronous) request.
+        Handles a non-streaming (synchronous) request to the Google AI API.
         """
         info(f"Handling synchronous request for model: {self.model_name}", "[GoogleHandler]")
         Provider_messages = await self.message_complier(messages)
@@ -125,7 +165,7 @@ class GoogleHandler(BaseHandler):
                 status=False,
                 error_message=f"Request timed out after {timeout_seconds} seconds"
             ))
-            raise ValueError(f"API request timed out after {timeout_seconds} seconds")
+            return Response(type="error", error=f"API request timed out after {timeout_seconds} seconds")
         except Exception as e:
             error(f"An error occurred during sync handle: {e}", "[GoogleHandler]")
             await finalize_request(RequestFinal(
@@ -137,7 +177,7 @@ class GoogleHandler(BaseHandler):
             return Response(type="error", error=str(e))
     async def stream_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> AsyncIterable[Dict[str, Any]]:
         """
-        Handles a streaming request.
+        Handles a streaming request to the Google AI API.
         """
         info(f"Handling streaming request for model: {self.model_name}", "[GoogleHandler]")
         Provider_messages = await self.message_complier(messages)
@@ -183,11 +223,11 @@ class GoogleHandler(BaseHandler):
                     # Process each part in the chunk
                     for part in chunk.parts:
                         if hasattr(part, 'text') and part.text:
-                            # Handle text content - same format as OpenAI
+                            # Handle text content
                             debug(f"Received stream chunk: {part.text[:50]}...", "[GoogleHandler]")
                             yield f"data: {part.text}\n\n"
                         elif hasattr(part, 'function_call') and part.function_call:
-                            # Handle function calls - convert to OpenAI format for consistency
+                            # Handle function calls
                             tool_calls_data = {
                                 "tool_calls": [{
                                     "id": f"call_{hash(str(part.function_call))}",

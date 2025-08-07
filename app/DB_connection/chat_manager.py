@@ -1,4 +1,19 @@
-from typing import Dict
+"""
+Chat Management Module
+
+This module provides functions for managing chat sessions and messages in the
+database. It handles the creation of new chats, retrieval of chat history, and
+the addition of new messages to a conversation.
+
+Key Functions:
+- create_chat: Creates a new chat session for a client.
+- chat_history: Retrieves the full message history for a given chat.
+- add_message: Adds a new message to a chat with an auto-incrementing index.
+
+Author: Ramazan Seçilmiş
+Version: 1.0.0
+"""
+from typing import Dict, List
 from uuid import UUID
 
 from sqlalchemy import select
@@ -10,6 +25,12 @@ from app.models.DataModels import message
 async def create_chat(client_id: UUID) -> UUID:
     """
     Creates a new chat session for a given client.
+    
+    Args:
+        client_id (UUID): The unique identifier of the client starting the chat.
+        
+    Returns:
+        UUID: The unique identifier of the newly created chat session.
     """
     try:
         info(f"Creating new chat", "[ChatManager]")
@@ -27,10 +48,16 @@ async def create_chat(client_id: UUID) -> UUID:
         error(f"Error creating chat: {e}", "[ChatManager]")
         raise
     
-async def chat_history(chat_id:UUID | None) -> list[Dict[str, str]]:
-    '''
-    Returns the history of a chat.
-    '''
+async def chat_history(chat_id:UUID | None) -> List[message]:
+    """
+    Retrieves the message history for a given chat session.
+    
+    Args:
+        chat_id (UUID | None): The unique identifier of the chat.
+        
+    Returns:
+        List[message]: A list of message objects representing the conversation history.
+    """
     try:
         result = []
         if chat_id is None:
@@ -40,7 +67,7 @@ async def chat_history(chat_id:UUID | None) -> list[Dict[str, str]]:
             messages = messages_result.scalars().all()
         
             for msg in messages:
-                result.append({'role':msg.role,"content": msg.content})
+                result.append(message(role=msg.role, content=msg.content))
             return result
     except Exception as e:
         error(f"Error getting chat history: {e}", "[ChatManager]")
@@ -48,21 +75,28 @@ async def chat_history(chat_id:UUID | None) -> list[Dict[str, str]]:
          
 
          
-async def add_message(chat_id:UUID, message: message):
-    '''
-    Adds a message to the chat with an auto-incrementing index per chat.
-    '''
+async def add_message(chat_id:UUID, message: message) -> Message:
+    """
+    Adds a new message to a chat session with an auto-incrementing index.
+    
+    Args:
+        chat_id (UUID): The unique identifier of the chat.
+        message (message): The message object to add to the chat.
+        
+    Returns:
+        Message: The newly created message object from the database.
+    """
     try:
         async for db in get_db():
             # Get the highest index for this chat
-            last_message = await db.execute(
-                select(Message)
+            last_message_result = await db.execute(
+                select(Message.index)
                 .where(Message.chat_id == chat_id)
                 .order_by(Message.index.desc())
                 .limit(1)
             )
-            last_message = last_message.scalar()
-            next_index = (last_message.index + 1) if last_message else 0
+            last_index = last_message_result.scalar_one_or_none()
+            next_index = (last_index + 1) if last_index is not None else 0
 
             new_message = Message(
                 chat_id=chat_id,

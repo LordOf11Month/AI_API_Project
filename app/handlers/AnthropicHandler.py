@@ -1,3 +1,19 @@
+"""
+Anthropic AI Provider Handler
+
+This module provides the handler implementation for interacting with Anthropic's
+Claude models. It adapts the common handler interface to the specific requirements
+of the Anthropic SDK.
+
+Key Features:
+- Handles both synchronous and streaming generation requests
+- Converts standardized message and tool formats to Anthropic's format
+- Manages API key configuration and client initialization
+- Parses Anthropic's response into a standardized format
+
+Author: Ramazan Seçilmiş
+Version: 1.0.0
+"""
 from typing import Union, AsyncIterable, Dict, Any, Optional
 from anthropic import AsyncAnthropic
 from app.handlers.BaseHandler import BaseHandler
@@ -13,16 +29,34 @@ from app.utils.console_logger import info, warning, error, debug
 class AnthropicHandler(BaseHandler):
     """
     Handler for Anthropic's Claude models.
+    
+    This class implements the BaseHandler interface to interact with Anthropic's
+    AI models, handling message compilation, tool conversion, and response parsing.
     """
 
     def __init__(self, model_name: str, generation_config: Dict[str, Any], system_instruction: Optional[str], API_KEY: str):
+        """
+        Initializes the AnthropicHandler.
+        
+        Args:
+            model_name (str): The name of the Anthropic model to use.
+            generation_config (Dict[str, Any]): Generation parameters for the model.
+            system_instruction (Optional[str]): System-level instructions for the model.
+            API_KEY (str): The API key for Anthropic services.
+        """
         super().__init__(model_name, generation_config, system_instruction, API_KEY)
         self.client = AsyncAnthropic(api_key=self.API_KEY)
         debug(f"Anthropic client initialized for model '{self.model_name}'.", "[AnthropicHandler]")
 
     async def message_complier(self, messages: list[message]) -> list[Dict[str, str]]:
         """
-        Compiles the list of messages formatted for the AI model.
+        Compiles a list of messages into the format expected by Anthropic's API.
+        
+        Args:
+            messages (list[message]): A list of standardized message objects.
+            
+        Returns:
+            list[Dict[str, str]]: A list of messages formatted for the Anthropic API.
         """
         debug(f"Compiling messages", "[AnthropicHandler]")
         formatted_messages = []
@@ -37,7 +71,13 @@ class AnthropicHandler(BaseHandler):
 
     def _convert_tools_to_anthropic_format(self, tools: Optional[list[Tool]]) -> Optional[list[Dict[str, Any]]]:
         """
-        Convert our Tool objects to Anthropic-compatible format.
+        Converts standardized Tool objects to the format expected by Anthropic's API.
+        
+        Args:
+            tools (Optional[list[Tool]]): A list of standardized tool objects.
+            
+        Returns:
+            Optional[list[Dict[str, Any]]]: A list of tools in Anthropic's format.
         """
         if not tools:
             return None
@@ -57,7 +97,13 @@ class AnthropicHandler(BaseHandler):
 
     def response_parser(self, response) -> Response:
         """
-        Convert Anthropic response to standardized Response object.
+        Parses the Anthropic API response into a standardized Response object.
+        
+        Args:
+            response: The response object from the Anthropic API.
+            
+        Returns:
+            Response: A standardized response object.
         """
         if response.content[0].type == "text":
             return Response(type="message", content=response.content[0].text)
@@ -66,9 +112,9 @@ class AnthropicHandler(BaseHandler):
         else:
             return Response(type="error", error="No content returned.")
 
-    async def sync_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> Dict[str, Any]:
+    async def sync_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> Response:
         """
-        Handles a non-streaming (synchronous) request.
+        Handles a non-streaming (synchronous) request to the Anthropic API.
         """
         info(f"Handling synchronous request for model: {self.model_name}", "[AnthropicHandler]")
         formatted_messages = await self.message_complier(messages)
@@ -146,7 +192,7 @@ class AnthropicHandler(BaseHandler):
 
     async def stream_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> AsyncIterable[Dict[str, Any]]:
         """
-        Handles a streaming request.
+        Handles a streaming request to the Anthropic API.
         """
         info(f"Handling streaming request for model: {self.model_name}", "[AnthropicHandler]")
         formatted_messages = await self.message_complier(messages)
@@ -160,8 +206,8 @@ class AnthropicHandler(BaseHandler):
         try:
             debug("Sending streaming request to Anthropic API.", "[AnthropicHandler]")
             
-            # Add timeout to the streaming API call
-            async def stream_with_timeout():
+            # Use a timeout for the entire streaming operation
+            async def stream_operation():
                 async with self.client.messages.stream(
                     model=self.model_name,
                     messages=formatted_messages,
@@ -176,8 +222,8 @@ class AnthropicHandler(BaseHandler):
                         yield f"data: {chunk}\n\n"
                     
                     final_message = await response_stream.get_final_message()
-            
-            async for chunk in await asyncio.wait_for(stream_with_timeout(), timeout=timeout_seconds):
+
+            async for chunk in await asyncio.wait_for(stream_operation(), timeout=timeout_seconds):
                 yield chunk
             
             info("Streaming finished.", "[AnthropicHandler]")
@@ -217,7 +263,7 @@ class AnthropicHandler(BaseHandler):
     @staticmethod
     def get_models() -> list[str]:
         """
-        Get a list of available Anthropic models.
+        Returns a hardcoded list of available Anthropic models.
         """
         debug("Fetching available models for Anthropic.", "[AnthropicHandler]")
         try:

@@ -1,82 +1,143 @@
 # 🧠 AI API Center – Unified Agent Platform
 
-> A modular, extensible backend platform for configuring, deploying, and managing AI agents with model selection, custom RAG, tool integrations, and fine-grained parameter control.
+> A modular, extensible backend platform for interacting with multiple AI providers through a single, unified interface.
 
 ## 🌐 Overview
 
-AI API Center is a unified backend service for handling AI model interactions in enterprise environments. It abstracts multiple LLM APIs (OpenAI, DeepSeek, Gemini, etc.) into a single, configurable interface.
+The Unified AI API is a backend service designed to abstract the complexities of various Large Language Model (LLM) providers (like OpenAI, Google, Anthropic, and DeepSeek). It provides a single, consistent API for text generation, conversational chat, and dynamic model routing, making it easy to build and manage AI-powered applications.
 
 ---
 
-🔑 Key Features
+## 🔑 Key Features
 
-    ⚡ Multi-Model Routing
-    Dynamically routes user prompts to the selected LLM backend (e.g., OpenAI, Anthropic, Google Gemini) via clean abstraction layers.
+-   **⚡ Multi-Provider Support**: Seamlessly switch between AI providers (OpenAI, Google, Anthropic, DeepSeek) with a single API call.
+-   **📡 Streaming Responses**: Real-time, token-by-token streaming for interactive applications using Server-Sent Events (SSE).
+-   **💬 Conversational Chat**: Built-in support for stateful conversations with persistent chat history stored in the database.
+-   **📝 Prompt Templating**: Create and manage reusable prompt templates with dynamic variable substitution for consistent and controlled AI responses.
+-   **🔐 Authentication & Security**: Secure user authentication with JWT, per-client API key management, and password hashing.
+-   **📊 Request Logging**: Comprehensive logging of all AI requests, including token counts, latency, and status for analytics and monitoring.
 
-    📡 Streaming Output Support
-    Low-latency, token-by-token streaming via SSE (Server-Sent Events) for real-time UI response in chat apps.
+## 🧱 System Architecture
 
-    🧾 Logging Layer
-    Full prompt-response capture including metadata (timestamp, model, API key owner, etc.) for observability and auditing.
-
-    🛡️ API Key Authentication
-    Clients authenticate with individual API keys. Unauthorized requests are blocked automatically.
-
-    🧠 System Prompt Control
-    Configure per-session system prompts to steer chatbot behavior. This enables contextually aware agents with domain-specific tone and instruction logic.
-
-🧱 System Architecture
-
-        ┌─────────────────────────────┐
-        │        Client App           │
-        │    (e.g., Hotel Chatbot)    │
-        └────────────┬────────────────┘
-                     │ REST API (w/ streaming)
+```
+        ┌─────────────────────────┐
+        │       Client App        │
+        └────────────┬────────────┘
+                     │ REST API (/api/generate, /api/chat)
                      ▼
-      ┌─────────────────────────────────────┐
-      │          Controller Layer           │
-      │ - Auth (API Key)                    │
-      │ - Stream handling (SSE)             │
-      └────────────────┬────────────────────┘
-                       ▼
-      ┌─────────────────────────────────────┐
-      │         Model Router Layer          │
-      │ - Dispatch to LLM provider          │
-      │ - Load-balancing, failover ready    │
-      └────┬────────────┬─────────────────┬─┘
-           ▼            ▼                 ▼
-   ┌────────────┐ ┌──────────────────┐ ┌───────────────┐
-   │ GPTHandler │ │ AnthropicHandler │ │ GeminiHandler │
-   └────┬───────┘ └────┬─────────────┘ └────┬──────────┘
-        ▼              ▼                    ▼
-   ┌──────────┐   ┌────────────┐   ┌────────────┐
-   │ OpenAI   │   │ Anthropic  │   │ Google AI  │
-   │ API      │   │ API        │   │ API        │
-   └──────────┘   └────────────┘   └────────────┘
+      ┌─────────────────────────────────┐
+      │         FastAPI Server          │
+      │   - Authentication Middleware   │
+      │   - Request/Response Models     │
+      └────────────┬────────────────────┘
+                   │
+                   ▼
+      ┌─────────────────────────────────┐
+      │        Request Dispatcher       │
+      │   - Route to Provider Handler   │
+      │   - Render Prompt Template      │
+      │   - Manage API Keys             │
+      └────┬────────────┬───────────┬───┘
+           ▼            ▼           ▼
+   ┌────────────┐ ┌──────────┐ ┌──────────┐ ┌────────────┐
+   │ OpenAI     │ │ Google   │ │ Anthropic│ │ DeepSeek   │
+   │ Handler    │ │ Handler  │ │ Handler  │ │ Handler    │
+   └────┬───────┘ └────┬─────┘ └────┬─────┘ └─────┬──────┘
+        │              │            │             │
+        ▼              ▼            ▼             ▼
+   ┌───────────────────────────────────────────────────┐
+   │                External AI Providers              │
+   └───────────────────────────────────────────────────┘
 
-🏗️ Project Structure
+      ┌─────────────────────────────────┐
+      │        Database (PostgreSQL)    │
+      │   - Clients & API Keys          │
+      │   - Chat History & Messages     │
+      │   - Prompt Templates            │
+      │   - Request Logs                │
+      └─────────────────────────────────┘
+```
 
-ai-api-center/
-├── app/                     # Main FastAPI app
-│   ├── routers/             # API routes
-│   ├── handlers/            # Claude, GPT, Gemini integration
-│   ├── auth/                # API key auth middleware
-│   ├── core/                # Model router, system prompt logic
-│   ├── logging/             # Central logging utilities
-│   └── config/              # Provider keys, system settings
-├── tests/                   # Unit & integration tests
-├── requirements.txt         # Python deps
+## 🏗️ Project Structure
+
+```
+unified-ai-api/
+├── app/                     # Main FastAPI application
+│   ├── auth/                # Authentication (JWT, passwords, middleware)
+│   ├── DB_connection/       # Database managers (clients, chats, API keys, etc.)
+│   ├── handlers/            # Handlers for each AI provider
+│   ├── models/              # Pydantic and SQLAlchemy models
+│   ├── routers/             # Request dispatcher
+│   ├── utils/               # Utility modules (e.g., logger)
+│   ├── root_prompt.txt      # Optional root prompt template
+│   └── server.py            # FastAPI server entrypoint
+├── tests/                   # Unit and integration tests
+├── requirements.txt         # Python dependencies
 └── README.md
+```
 
 ## 🛠️ Tech Stack
 
-| Component     | Technology                                      |
-|---------------|--------------------------------------------------|
-| **Backend**   | Python (FastAPI or Starlette)                   |
-| **Auth**      | JWT (PyJWT), OAuth-ready                        |
-| **LLM APIs**  | OpenAI, Deepseek, Gemini, Claude, etc.          |
-| **Logging DB**| PostgreSQL / SQLite                             |
+| Component      | Technology                               |
+|----------------|------------------------------------------|
+| **Backend**    | Python, FastAPI                          |
+| **Database**   | PostgreSQL (with SQLAlchemy)             |
+| **Auth**       | JWT (PyJWT), passlib (for hashing)       |
+| **LLM APIs**   | OpenAI, Google, Anthropic, DeepSeek      |
+| **Templating** | Jinja2                                   |
+
+## 🚀 Getting Started
+
+### 1. Prerequisites
+
+-   Python 3.10+
+-   PostgreSQL database
+
+### 2. Setup
+
+1.  **Clone the repository:**
+    ```sh
+    git clone https://github.com/LordOf11Month/AI_API_Project
+    cd unified-ai-api
+    ```
+
+2.  **Install dependencies:**
+    ```sh
+    pip install -r requirements.txt
+    ```
+
+3.  **Configure environment variables:**
+    Create a `.env` file in the root directory and add the following:
+    ```env
+    # Database connection
+    DB_USER=your_db_user
+    DB_PASSWORD=your_db_password
+    DB_HOST=localhost
+    DB_PORT=5432
+    DB_NAME=your_db_name
+
+    # JWT secret key
+    JWT_SECRET_KEY=your-super-secret-key
+
+    # System-wide API keys (optional fallback)
+    OPENAI_API_KEY=your-openai-key
+    GOOGLE_API_KEY=your-google-key
+    ANTHROPIC_API_KEY=your-anthropic-key
+    DEEPSEEK_API_KEY=your-deepseek-key
+
+    # Logger configuration
+    LOG_DEBUG=true
+    ```
+
+### 3. Running the Server
+
+1.  **Start the FastAPI server:**
+    ```sh
+    uvicorn app.server:app --reload
+    ```
+2.  **Access the API docs** at `http://127.0.0.1:8000/docs`.
 
 ## 👥 Contributors
 
-- **Mehmet Can Özen** - Contributor 👥
+-   **Ramazan Seçilmiş** - Main Contributor 👑
+-   **Mehmet Can Özen** - Contributor 👥

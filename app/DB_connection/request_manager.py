@@ -1,3 +1,19 @@
+"""
+Request Management Module
+
+This module provides functions for tracking AI generation requests in the database.
+It handles the two main stages of a request's lifecycle: initialization and
+finalization, ensuring that all relevant data is logged for analytics and
+billing purposes.
+
+Key Functions:
+- initialize_request: Creates a new request record at the start of a request.
+- finalize_request: Updates the request record with completion details,
+  including token counts, status, and latency.
+
+Author: Ramazan Seçilmiş
+Version: 1.0.0
+"""
 # Standard library imports
 from sqlalchemy import select
 
@@ -12,10 +28,18 @@ from app.utils.console_logger import debug, info, warning, error
 
 
 async def initialize_request(request: RequestInit):
-    '''
+    """
     Initializes a new request record in the database.
-    Returns the request ID for later finalization.
-    '''
+    
+    This function should be called at the beginning of an AI generation request
+    to create a preliminary record in the database.
+    
+    Args:
+        request (RequestInit): An object containing the initial request data.
+        
+    Returns:
+        UUID: The unique identifier of the newly created request record.
+    """
     async with SessionLocal() as db:
         try:
             debug(f"Initializing request for client: {request.client_id}", "[RequestManager]")
@@ -40,9 +64,15 @@ async def initialize_request(request: RequestInit):
             raise e
 
 async def finalize_request(response: RequestFinal):
-    '''
-    Finalizes a request by updating it with the response data.
-    '''
+    """
+    Finalizes a request record with completion details.
+    
+    This function is called after an AI generation request is complete to update
+    the corresponding record with token counts, status, latency, and any errors.
+    
+    Args:
+        response (RequestFinal): An object containing the final request data.
+    """
     async with SessionLocal() as db:
         try:
             debug(f"Finalizing request with ID: {response.request_id}", "[RequestManager]")

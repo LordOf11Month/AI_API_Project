@@ -1,3 +1,20 @@
+"""
+DeepSeek AI Provider Handler
+
+This module provides the handler implementation for interacting with DeepSeek's
+AI models. It leverages the OpenAI-compatible API provided by DeepSeek, allowing
+for a similar implementation to the OpenAI handler.
+
+Key Features:
+- Handles both synchronous and streaming generation requests
+- Utilizes the OpenAI SDK for communication with DeepSeek's API
+- Fetches and lists available DeepSeek models
+- Manages API key configuration and client initialization
+- Parses DeepSeek's response into a standardized format
+
+Author: Ramazan Seçilmiş
+Version: 1.0.0
+"""
 import traceback
 from typing import Union, AsyncIterable, Dict, Any, Optional
 from openai import AsyncOpenAI, OpenAI
@@ -12,10 +29,22 @@ import os
 
 class DeepseekHandler(BaseHandler):
     """
-    Handler for Deepseek's models.
+    Handler for DeepSeek's AI models.
+    
+    This class implements the BaseHandler interface to interact with DeepSeek's
+    AI models using their OpenAI-compatible API.
     """
 
     def __init__(self, model_name: str, generation_config: Dict[str, Any], system_instruction: Optional[str], API_KEY: str):
+        """
+        Initializes the DeepseekHandler.
+        
+        Args:
+            model_name (str): The name of the DeepSeek model to use.
+            generation_config (Dict[str, Any]): Generation parameters for the model.
+            system_instruction (Optional[str]): System-level instructions for the model.
+            API_KEY (str): The API key for DeepSeek services.
+        """
         super().__init__(model_name, generation_config, system_instruction, API_KEY)
         self.client = AsyncOpenAI(
             api_key=self.API_KEY,
@@ -25,7 +54,13 @@ class DeepseekHandler(BaseHandler):
 
     async def message_complier(self, messages: list[message]) -> list[Dict[str, str]]:
         """
-        Compiles the list of messages formatted for the AI model.
+        Compiles a list of messages into the format expected by DeepSeek's API.
+        
+        Args:
+            messages (list[message]): A list of standardized message objects.
+            
+        Returns:
+            list[Dict[str, str]]: A list of messages formatted for the DeepSeek API.
         """
         debug(f"Compiling messages", "[DeepSeekHandler]")
         formatted_messages = []
@@ -43,7 +78,13 @@ class DeepseekHandler(BaseHandler):
 
     async def response_parser(self, response: Dict[str, Any]) -> Response:
         """
-        Parses the response from the DeepSeek API.
+        Parses the response from the DeepSeek API into a standardized format.
+        
+        Args:
+            response (Dict[str, Any]): The response dictionary from the API.
+            
+        Returns:
+            Response: A standardized response object.
         """
         if response.output[0].message.content:
             return Response(type="message", content=response.output[0].message.content)
@@ -52,9 +93,9 @@ class DeepseekHandler(BaseHandler):
         else:
             return Response(type="error", error="No content returned.")
     
-    async def sync_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> Dict[str, Any]:
+    async def sync_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> Response:
         """
-        Handles a non-streaming (synchronous) request.
+        Handles a non-streaming (synchronous) request to the DeepSeek API.
         """
         info(f"Handling synchronous request for model: {self.model_name}", "[DeepSeekHandler]")
         formatted_messages = await self.message_complier(messages)
@@ -82,7 +123,7 @@ class DeepseekHandler(BaseHandler):
             latency = time.time() - latency
             debug("Received synchronous response from API.", "[DeepSeekHandler]")
 
-            result = response.output[0]  # Get the first output message
+            result = await self.response_parser(response)
 
             debug(f"finalizing request for request_id: {request_id}", "[DeepSeekHandler]")
             await finalize_request(RequestFinal(
@@ -105,7 +146,7 @@ class DeepseekHandler(BaseHandler):
                 status=False,
                 error_message=f"Request timed out after {timeout_seconds} seconds"
             ))
-            raise ValueError(f"API request timed out after {timeout_seconds} seconds")
+            return Response(type="error", error=f"API request timed out after {timeout_seconds} seconds")
         except Exception as e:
             error(f"An error occurred during sync handle: {e}\nStack trace: {traceback.format_exc()}", "[DeepSeekHandler]")
             await finalize_request(RequestFinal(
@@ -117,11 +158,11 @@ class DeepseekHandler(BaseHandler):
                 status=False,
                 error_message=str(e)
             ))
-            raise
+            return Response(type="error", error=str(e))
         
     async def stream_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> AsyncIterable[Dict[str, Any]]:
         """
-        Handles a streaming request.
+        Handles a streaming request to the DeepSeek API.
         """
         info(f"Handling streaming request for model: {self.model_name}", "[DeepSeekHandler]")
         formatted_messages = await self.message_complier(messages)
@@ -221,8 +262,7 @@ class DeepseekHandler(BaseHandler):
     @staticmethod
     def get_models() -> list[str]:
         """
-        Return all available Deepseek models. 
-        This is a static method so it can be called without creating an instance.
+        Returns a list of available DeepSeek models by querying their API.
         """
         debug("Fetching available models for Deepseek.", "[DeepseekHandler]")
         try:

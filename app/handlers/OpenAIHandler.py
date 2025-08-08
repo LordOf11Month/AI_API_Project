@@ -220,9 +220,9 @@ class OpenAIHandler(BaseHandler):
                 request_id=request_id,
                 latency=None,
                 status=False,
-                error_message="Stream was cancelled during processing"
+                error_message=f"Request timed out after {timeout_seconds} seconds"
             ))
-            raise
+            yield f"data: An error occurred: {f'Request timed out after {timeout_seconds} seconds'}\n\n"
 
         except Exception as e:
             error(f"An error occurred during stream handle at line {e.__traceback__.tb_lineno}: {e} \nStack trace: {traceback.format_exc()}", "[OpenAIHandler]")

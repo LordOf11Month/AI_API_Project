@@ -1,3 +1,18 @@
+"""
+JWT Token Utilities
+
+This module provides utility functions for creating and verifying JSON Web Tokens
+(JWTs) used for client authentication. It relies on the PyJWT library and uses
+a secret key from environment variables.
+
+Key Functions:
+- create_token: Creates a new JWT for a given client ID with a specified
+  expiration time.
+- verify_token: Verifies a JWT's signature and expiration, returning its payload.
+
+Author: Ramazan Seçilmiş
+Version: 1.0.0
+"""
 import jwt
 from datetime import datetime, timedelta, timezone
 import os
@@ -10,7 +25,14 @@ ALGORITHM = "HS256"
 
 def create_token(client_id: str, expires_delta: timedelta = timedelta(minutes=15)) -> str:
     """
-    Creates a JWT token.
+    Creates a new JWT for a given client ID.
+    
+    Args:
+        client_id (str): The unique identifier of the client to include in the token.
+        expires_delta (timedelta): The lifespan of the token. Defaults to 15 minutes.
+        
+    Returns:
+        str: The encoded JWT string.
     """
     console_logger.info(f"Creating token for client_id: {client_id}", "[Token]")
     console_logger.debug(f"Token expires in: {expires_delta}", "[Token]")
@@ -26,7 +48,17 @@ def create_token(client_id: str, expires_delta: timedelta = timedelta(minutes=15
 
 def verify_token(token: str) -> dict:
     """
-    Verifies the JWT token.
+    Verifies a JWT's signature and expiration.
+    
+    Args:
+        token (str): The JWT string to verify.
+        
+    Returns:
+        dict: The decoded token payload if verification is successful.
+        
+    Raises:
+        HTTPException: 
+            - 401: If the token has expired or is invalid.
     """
     console_logger.info("Verifying JWT token", "[Token]")
     console_logger.debug(f"Token to verify: {token[:20]}...", "[Token]")

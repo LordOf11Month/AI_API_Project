@@ -1,150 +1,268 @@
+"""
+DeepSeek AI Provider Handler
+
+This module provides the handler implementation for interacting with DeepSeek's
+AI models. It leverages the OpenAI-compatible API provided by DeepSeek, allowing
+for a similar implementation to the OpenAI handler.
+
+Key Features:
+- Handles both synchronous and streaming generation requests
+- Utilizes the OpenAI SDK for communication with DeepSeek's API
+- Fetches and lists available DeepSeek models
+- Manages API key configuration and client initialization
+- Parses DeepSeek's response into a standardized format
+
+Author: Ramazan Seçilmiş
+Version: 1.0.0
+"""
+import traceback
 from typing import Union, AsyncIterable, Dict, Any, Optional
 from openai import AsyncOpenAI, OpenAI
 from app.handlers.BaseHandler import BaseHandler
 import asyncio
+import time
 from uuid import UUID
-from app.models.DataModels import ResponseLog
+from app.models.DataModels import RequestFinal, Response, message, Tool
 from app.DB_connection.request_manager import finalize_request
-from app.DB_connection.chat_manager import chat_history
 from app.utils.console_logger import info, warning, error, debug
 import os
 
 class DeepseekHandler(BaseHandler):
     """
-    Handler for Deepseek's models.
+    Handler for DeepSeek's AI models.
+    
+    This class implements the BaseHandler interface to interact with DeepSeek's
+    AI models using their OpenAI-compatible API.
     """
 
-    def __init__(self, model_name: str, generation_config: Dict[str, Any], system_instruction: Optional[str]):
-        super().__init__(model_name, generation_config, system_instruction)
+    def __init__(self, model_name: str, generation_config: Dict[str, Any], system_instruction: Optional[str], API_KEY: str):
+        """
+        Initializes the DeepseekHandler.
+        
+        Args:
+            model_name (str): The name of the DeepSeek model to use.
+            generation_config (Dict[str, Any]): Generation parameters for the model.
+            system_instruction (Optional[str]): System-level instructions for the model.
+            API_KEY (str): The API key for DeepSeek services.
+        """
+        super().__init__(model_name, generation_config, system_instruction, API_KEY)
         self.client = AsyncOpenAI(
-            api_key=os.getenv("DEEPSEEK_API_KEY"),
+            api_key=self.API_KEY,
             base_url="https://api.deepseek.com/v1"
         )
         debug(f"Deepseek client initialized for model '{self.model_name}'.", "[DeepseekHandler]")
 
-    async def sync_handle(self, user_prompt: str, chat_id: UUID | None, request_id: UUID) -> Dict[str, Any]:
+    async def message_complier(self, messages: list[message]) -> list[Dict[str, str]]:
         """
-        Processes a prompt and returns the model's response.
+        Compiles a list of messages into the format expected by DeepSeek's API.
+        
+        Args:
+            messages (list[message]): A list of standardized message objects.
+            
+        Returns:
+            list[Dict[str, str]]: A list of messages formatted for the DeepSeek API.
         """
-        try:
-            info(f"Handling synchronous request for model: {self.model_name}", "[DeepseekHandler]")
-            debug(f"Request ID: {request_id}", "[DeepseekHandler]")
-            
-            formatted_messages = await self.chat_complier(user_prompt, chat_id)
-            if self.system_instruction:
-                formatted_messages.insert(0, {"role": "system", "content": self.system_instruction})
-            
-            try:
-                debug("Sending request to Deepseek API.", "[DeepseekHandler]")
-                response = await self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=formatted_messages,
-                    **self.generation_config
-                )
-                debug("Received synchronous response from API.", "[DeepseekHandler]")
-            except asyncio.CancelledError:
-                warning("Request was cancelled during API call", "[DeepseekHandler]")
-                asyncio.create_task(finalize_request(ResponseLog(
-                    request_id=request_id,
-                    response="Request cancelled",
-                    input_tokens=0,
-                    output_tokens=0,
-                    status=False,
-                    error_message="Request was cancelled during processing"
-                )))
-                raise
-
-            response_content = response.choices[0].message.content
-            debug(f"Extracted response content: {response_content[:100]}...", "[DeepseekHandler]")
-
-            asyncio.create_task(finalize_request(ResponseLog(
-                request_id=request_id,
-                input_tokens=response.usage.prompt_tokens,
-                output_tokens=response.usage.completion_tokens,
-                response=response_content,
-                status=response.choices[0].finish_reason == "stop",
-            )))
-
-            info("Synchronous response processed and logged.", "[DeepseekHandler]")
-            return {"response": response_content}
-
-        except Exception as e:
-            if not isinstance(e, asyncio.CancelledError):
-                error(f"An error occurred during sync handle: {e}", "[DeepseekHandler]")
-                asyncio.create_task(finalize_request(ResponseLog(
-                    request_id=request_id,
-                    response="",
-                    input_tokens=0,
-                    output_tokens=0,
-                    status=False,
-                    error_message=str(e)
-                )))
-            raise
+        debug(f"Compiling messages", "[DeepSeekHandler]")
+        formatted_messages = []
         
-    async def stream_handle(self, user_prompt: str, chat_id: UUID | None, request_id: UUID) -> AsyncIterable[Dict[str, Any]]:
-        info(f"Handling streaming request for model: {self.model_name}", "[DeepseekHandler]")
-        debug(f"Request ID: {request_id}", "[DeepseekHandler]")
-        
-        formatted_messages = await self.chat_complier(user_prompt, chat_id)
+        # Add system instruction if available
         if self.system_instruction:
-            formatted_messages.insert(0, {"role": "system", "content": self.system_instruction})
+            formatted_messages.append({"role": "system", "content": self.system_instruction})
+        
+        # Add all messages
+        for msg in messages:
+            formatted_messages.append({"role": msg.role.value, "content": msg.content})
+        
+        debug(f"Chat compiled. Total messages: {len(formatted_messages)}", "[DeepSeekHandler]")
+        return formatted_messages
 
-        full_response = ""
+    async def response_parser(self, response: Dict[str, Any]) -> Response:
+        """
+        Parses the response from the DeepSeek API into a standardized format.
+        
+        Args:
+            response (Dict[str, Any]): The response dictionary from the API.
+            
+        Returns:
+            Response: A standardized response object.
+        """
+        if response.output[0].message.content:
+            return Response(type="message", content=response.output[0].message.content)
+        elif response.output[0].message.tool_calls:
+            return Response(type="function_call", function_name=response.output[0].message.tool_calls[0].function.name, function_args=response.output[0].message.tool_calls[0].function.arguments)
+        else:
+            return Response(type="error", error="No content returned.")
+    
+    async def sync_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> Response:
+        """
+        Handles a non-streaming (synchronous) request to the DeepSeek API.
+        """
+        info(f"Handling synchronous request for model: {self.model_name}", "[DeepSeekHandler]")
+        formatted_messages = await self.message_complier(messages)
+        
+        # Get timeout from environment variable (default: 30 seconds)
+        timeout_seconds = int(os.getenv("API_TIMEOUT_SECONDS", "30"))
+        debug(f"Using API timeout: {timeout_seconds} seconds", "[DeepSeekHandler]")
+        
         try:
-            debug("Sending streaming request to Deepseek API.", "[DeepseekHandler]")
-            response_stream = await self.client.chat.completions.create(
-                model=self.model_name,
-                messages=formatted_messages,
-                **self.generation_config,
-                stream=True
+            debug("Sending request to DeepSeek API.", "[DeepSeekHandler]")
+            latency = time.time()
+            
+            # Add timeout to the API call
+            response = await asyncio.wait_for(
+                self.client.responses.create(
+                    model=self.model_name,
+                    input=formatted_messages,
+                    **self.generation_config,
+                    tools=tools,
+                    tool_choice="auto" if tools else None
+                ),
+                timeout=timeout_seconds
             )
             
-            debug("Processing stream chunks...", "[DeepseekHandler]")
-            async for chunk in response_stream:
-                content = chunk.choices[0].delta.content
-                if content:
-                    full_response += content
-                    debug(f"Received stream chunk: {content[:50]}...", "[DeepseekHandler]")
-                yield {"response": content}
-            
-            info("Streaming finished. Logging full response.", "[DeepseekHandler]")
-            asyncio.create_task(finalize_request(ResponseLog(
-                request_id=request_id,
-                response=full_response,
-                input_tokens=0, 
-                output_tokens=0,
-                status=True,
-            )))
+            latency = time.time() - latency
+            debug("Received synchronous response from API.", "[DeepSeekHandler]")
 
-        except asyncio.CancelledError:
-            warning("Stream was cancelled during processing", "[DeepseekHandler]")
-            asyncio.create_task(finalize_request(ResponseLog(
+            result = await self.response_parser(response)
+
+            debug(f"finalizing request for request_id: {request_id}", "[DeepSeekHandler]")
+            await finalize_request(RequestFinal(
                 request_id=request_id,
-                response=full_response,
-                input_tokens=0,
-                output_tokens=0,
+                input_tokens=response.usage.input_tokens if response.usage else None,
+                output_tokens=response.usage.output_tokens if response.usage else None,
+                reasoning_tokens=response.usage.output_tokens_details.reasoning_tokens if response.usage and response.usage.output_tokens_details else None,
+                latency=latency,
+                status=response.status == "completed"
+            ))
+            info("Synchronous request finalized successfully.", "[DeepSeekHandler]")
+
+            return result
+
+        except asyncio.TimeoutError:
+            error(f"DeepSeek API request timed out after {timeout_seconds} seconds", "[DeepSeekHandler]")
+            await finalize_request(RequestFinal(
+                request_id=request_id,
+                latency=None,
                 status=False,
-                error_message="Stream was cancelled during processing"
-            )))
-            raise
-
+                error_message=f"Request timed out after {timeout_seconds} seconds"
+            ))
+            raise Exception(f"API request timed out after {timeout_seconds} seconds")
         except Exception as e:
-            error(f"An error occurred during stream handle: {e}", "[DeepseekHandler]")
-            asyncio.create_task(finalize_request(ResponseLog(
+            error(f"An error occurred during sync handle at line {e.__traceback__.tb_lineno}: {e} \nStack trace: {traceback.format_exc()}", "[DeepSeekHandler]")
+            await finalize_request(RequestFinal(
                 request_id=request_id,
-                response=full_response,
-                error_message=str(e),
+                input_tokens=None,
+                output_tokens=None,
+                reasoning_tokens=None,
+                latency=None,
                 status=False,
-                input_tokens=0,
-                output_tokens=0
-            )))
-            yield {"error": str(e)}
+                error_message=str(e)
+            ))
+            raise e
+        
+    async def stream_handle(self, messages: list[message], request_id: UUID, tools: Optional[list[Tool]] = None) -> AsyncIterable[Dict[str, Any]]:
+        """
+        Handles a streaming request to the DeepSeek API.
+        """
+        info(f"Handling streaming request for model: {self.model_name}", "[DeepSeekHandler]")
+        formatted_messages = await self.message_complier(messages)
+
+        # Get timeout from environment variable (default: 60 seconds for streaming)
+        timeout_seconds = int(os.getenv("API_STREAM_TIMEOUT_SECONDS", "60"))
+        debug(f"Using streaming API timeout: {timeout_seconds} seconds", "[DeepSeekHandler]")
+
+        full_response = ""
+        latency = time.time()
+        tool_calls_buffer = []
+        try:
+            debug("Sending streaming request to DeepSeek API.", "[DeepSeekHandler]")
+            
+            # Add timeout to the streaming API call
+            response_stream = await asyncio.wait_for(
+                self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=formatted_messages,
+                    **self.generation_config,
+                    stream=True,
+                    tools=tools,
+                    tool_choice="auto" if tools else None
+                ),
+                timeout=timeout_seconds
+            )
+            
+            latency = time.time() - latency
+            
+            debug("Processing stream chunks...", "[DeepSeekHandler]")
+            async for chunk in response_stream:
+                delta = chunk.choices[0].delta
+                
+                # Handle regular content
+                if delta.content:
+                    content = delta.content
+                    full_response += content
+                    debug(f"Received stream chunk: {content[:50]}...", "[DeepSeekHandler]")
+                    yield f"data: {content}\n\n"
+                
+                # Handle tool calls
+                if delta.tool_calls:
+                    for tool_call in delta.tool_calls:
+                        # Ensure we have enough space in the buffer
+                        while len(tool_calls_buffer) <= tool_call.index:
+                            tool_calls_buffer.append({
+                                "id": "",
+                                "type": "function",
+                                "function": {"name": "", "arguments": ""}
+                            })
+                        
+                        # Update the tool call at the correct index
+                        if tool_call.id:
+                            tool_calls_buffer[tool_call.index]["id"] = tool_call.id
+                        if tool_call.function.name:
+                            tool_calls_buffer[tool_call.index]["function"]["name"] = tool_call.function.name
+                        if tool_call.function.arguments:
+                            tool_calls_buffer[tool_call.index]["function"]["arguments"] += tool_call.function.arguments
+                    
+                    # Yield tool call data in a structured format
+                    yield f"data: {{'tool_calls': {tool_calls_buffer}}}\n\n"
+            
+            info("Streaming finished.", "[DeepSeekHandler]")
+
+        except asyncio.TimeoutError:
+            error(f"DeepSeek streaming API request timed out after {timeout_seconds} seconds", "[DeepSeekHandler]")
+            await finalize_request(RequestFinal(
+                request_id=request_id,
+                latency=None,
+                status=False,
+                error_message=f"Request timed out after {timeout_seconds} seconds"
+            ))
+            yield f"data: Request timed out after {timeout_seconds} seconds\n\n"
+        except Exception as e:
+            error(f"An error occurred during stream handle at line {e.__traceback__.tb_lineno}: {e} \nStack trace: {traceback.format_exc()}", "[DeepSeekHandler]")
+            await finalize_request(RequestFinal(
+                request_id=request_id,
+                latency=None,
+                status=False,
+                error_message=str(e)
+            ))
+            yield f"data: An error occurred: {str(e)}\n\n"
+        
+        finally:
+            debug(f"finalizing full streaming request for request_id: {request_id}", "[DeepSeekHandler]")
+            await finalize_request(RequestFinal(
+                request_id=request_id,
+                input_tokens=None,  # Token counts not available in streaming for DeepSeek
+                output_tokens=None,
+                reasoning_tokens=None,
+                latency=latency,
+                status=True
+            ))
+            info("Full streaming request finalized successfully.", "[DeepSeekHandler]")
+            yield "data: [DONE]\n\n"
 
     @staticmethod
     def get_models() -> list[str]:
         """
-        Return all available Deepseek models. 
-        This is a static method so it can be called without creating an instance.
+        Returns a list of available DeepSeek models by querying their API.
         """
         debug("Fetching available models for Deepseek.", "[DeepseekHandler]")
         try:
@@ -156,26 +274,5 @@ class DeepseekHandler(BaseHandler):
         except Exception as e:
             error(f"Failed to fetch models from Deepseek: {e}", "[DeepseekHandler]")
             return []
-    
-    @staticmethod
-    async def chat_complier(userprompt:str,chat_id:UUID | None) -> list[Dict[str, str]]:
-        """
-        This method is used to compile the user prompt into a list of messages for the model.
-        """
-        debug(f"Compiling chat for chat_id: {chat_id}", "[DeepseekHandler]")
-        history = await chat_history(chat_id)
-        if history:
-            debug(f"Found {len(history)} messages in chat history.", "[DeepseekHandler]")
-        else:
-            warning(f"No history found for chat_id: {chat_id}", "[DeepseekHandler]")
-
-        formatted_messages = []
-        for message in history:
-            formatted_messages.append({"role": "user", "content": message["request"]})
-            formatted_messages.append({"role": "assistant", "content": message["response"]})
-        
-        formatted_messages.append({"role": "user", "content": userprompt})
-        debug(f"Chat compiled. Total messages: {len(formatted_messages)}", "[DeepseekHandler]")
-        return formatted_messages
     
     

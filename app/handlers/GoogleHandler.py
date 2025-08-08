@@ -80,7 +80,7 @@ class GoogleHandler(BaseHandler):
             if not message.content or message.content.strip() == "":
                 warning(f"Skipping empty message with role: {message.role.value}", "[GoogleHandler]")
                 continue
-            history.append({'role': message.role.value, 'parts': [message.content]})
+            history.append({'role': 'model' if message.role.value=='assistant' else message.role.value, 'parts': [message.content]})
         debug(f"Chat compiled. Total messages: {len(history)}", "[GoogleHandler]")
         return history
 

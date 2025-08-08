@@ -177,7 +177,7 @@ class OpenAIHandler(BaseHandler):
             current_function_calls = {}
             
             async for chunk in response_stream:
-                debug(f"Received chunk type: {type(chunk)}, content: {chunk}", "[OpenAIHandler]")
+                debug(f"Received chunk type: {chunk.type}, content: {chunk}", "[OpenAIHandler]")
                 
                 # Handle function call argument streaming
                 if chunk.type == "response.function_call_arguments.delta":
@@ -199,9 +199,8 @@ class OpenAIHandler(BaseHandler):
                         yield f"data: {{'tool_calls': [{tool_call}]}}\n\n"
                 
                 # Handle regular content streaming
-                elif chunk.type == "response.content.delta":
+                elif chunk.type == "response.output_text.delta":
                     content = chunk.delta
-                    full_response += content
                     debug(f"Received content chunk: {content[:50]}...", "[OpenAIHandler]")
                     yield f"data: {content}\n\n"
                 
@@ -221,9 +220,10 @@ class OpenAIHandler(BaseHandler):
                 request_id=request_id,
                 latency=None,
                 status=False,
-                error_message=f"Request timed out after {timeout_seconds} seconds"
+                error_message="Stream was cancelled during processing"
             ))
-            yield f"data: Request timed out after {timeout_seconds} seconds\n\n"
+            raise
+
         except Exception as e:
             error(f"An error occurred during stream handle at line {e.__traceback__.tb_lineno}: {e} \nStack trace: {traceback.format_exc()}", "[OpenAIHandler]")
             await finalize_request(RequestFinal(

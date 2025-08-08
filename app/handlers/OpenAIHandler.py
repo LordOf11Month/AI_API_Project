@@ -5,6 +5,7 @@ import asyncio
 import time
 import os
 import traceback
+import json
 from uuid import UUID
 from app.models.DataModels import RequestFinal, Response, Tool, message
 from app.DB_connection.request_manager import finalize_request
@@ -43,10 +44,18 @@ class OpenAIHandler(BaseHandler):
         """
         Parses the response from the OpenAI API.
         """
-        if response.output[0].message.content:
-            return Response(type="message", content=response.output[0].message.content)
-        elif response.output[0].message.tool_calls:
-            return Response(type="function_call", function_name=response.output[0].message.tool_calls[0].function.name, function_args=response.output[0].message.tool_calls[0].function.arguments)
+        # Check the type of the output directly
+        if hasattr(response.output[0], 'type') and response.output[0].type == 'function_call':
+            return Response(type="function_call", function_name=response.output[0].name, function_args=json.loads(response.output[0].arguments))
+        elif hasattr(response.output[0], 'content') and response.output[0].content:
+            # Handle the new response format where content is a list of ResponseOutputText objects
+            if isinstance(response.output[0].content, list) and len(response.output[0].content) > 0:
+                # Extract text from the first content item
+                content_text = response.output[0].content[0].text
+                return Response(type="message", content=content_text)
+            else:
+                # Fallback for older format or empty content
+                return Response(type="message", content=str(response.output[0].content))
         else:
             return Response(type="error", error="No content returned.")
     
@@ -64,7 +73,6 @@ class OpenAIHandler(BaseHandler):
         try:
             debug("Sending request to OpenAI API.", "[OpenAIHandler]")
             latency = time.time()
-            
             # Add timeout to the API call
             response = await asyncio.wait_for(
                 self.client.responses.create(
@@ -91,9 +99,22 @@ class OpenAIHandler(BaseHandler):
                 status=response.status == "completed"
             ))
             info("Synchronous request finalized successfully.", "[OpenAIHandler]")
-
-
-            return await self.response_parser(response)
+            debug(f"response.output[0]: {response.output[0]}", "[OpenAIHandler]")
+            
+            # Check the type of the output directly
+            if hasattr(response.output[0], 'type') and response.output[0].type == 'function_call':
+                return Response(type="function_call", function_name=response.output[0].name, function_args=json.loads(response.output[0].arguments))
+            elif hasattr(response.output[0], 'content') and response.output[0].content:
+                # Handle the new response format where content is a list of ResponseOutputText objects
+                if isinstance(response.output[0].content, list) and len(response.output[0].content) > 0:
+                    # Extract text from the first content item
+                    content_text = response.output[0].content[0].text
+                    return Response(type="message", content=content_text)
+                else:
+                    # Fallback for older format or empty content
+                    return Response(type="message", content=str(response.output[0].content))
+            else:
+                return Response(type="error", error="No content returned.")
 
         except asyncio.TimeoutError:
             error(f"OpenAI API request timed out after {timeout_seconds} seconds", "[OpenAIHandler]")

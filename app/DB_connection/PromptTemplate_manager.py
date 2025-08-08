@@ -164,11 +164,9 @@ async def update_prompt_template(template_name: str, template_data: PromptTempla
 
             existing_template.prompt = template_data.prompt
             existing_template.tenant_fields = template_data.tenant_fields
-            existing_template.version += 1
-                
             await db.commit()
             await db.refresh(existing_template)
-            info(f"Prompt template '{template_name}' updated successfully to version {existing_template.version}", "[PromptManager]")
+            info(f"Prompt template '{template_name}' updated successfully", "[PromptManager]")
             return existing_template
     except Exception as e:
         error(f"Error updating prompt template at line {e.__traceback__.tb_lineno}: {e}", "[PromptManager]")

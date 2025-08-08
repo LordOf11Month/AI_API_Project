@@ -302,11 +302,12 @@ async def chat(request: ChatRequest, client_id: str = Depends(get_current_client
         response = await _dispatch_and_respond(
             GenerateRequest(provider=request.provider, 
                             model=request.model, 
-                            systemPrompt=request.systemPrompt, 
+                            systemPrompt=request.systemPrompt,
+                            tools=request.tools,
                             stream=request.stream,
                             parameters=request.parameters,
                             messages=messages), client_id)
-        
+        debug(f"response: {response}", "[Chat]")
         if request.stream:
             # For streaming responses, we need to collect chunks and save after streaming
             async def stream_and_save():
@@ -322,15 +323,18 @@ async def chat(request: ChatRequest, client_id: str = Depends(get_current_client
         else:
             # For non-streaming responses, save directly and return
             # Handle both string responses and dict responses from handlers
+            
+            # Extract the actual response from the wrapper dictionary
+            actual_response = response["response"] if isinstance(response, dict) and "response" in response else response
 
-            if response.type == "message":
-                await add_message(request.chat_id, message(role='assistant', content=response.content))
-            elif response.type == "function_call":
-                await add_message(request.chat_id, message(role='assistant', content=response.function_name, function_args=response.function_args))
-            elif response.type == "error":
-                raise HTTPException(status_code=500, detail=response.content)
-            response.chat_id = request.chat_id
-            return response
+            if actual_response.type == "message":
+                await add_message(request.chat_id, message(role='assistant', content=actual_response.content))
+            elif actual_response.type == "function_call":
+                await add_message(request.chat_id, message(role='assistant', content=actual_response.function_name, function_args=actual_response.function_args))
+            elif actual_response.type == "error":
+                raise HTTPException(status_code=500, detail=actual_response.content)
+            actual_response.chat_id = request.chat_id
+            return actual_response
     
     except ValueError as e:
         error(f"Validation error in chat endpoint: {e}", "[Chat]")
@@ -563,9 +567,8 @@ async def handle_create_template(
         raise HTTPException(status_code=500, detail="Failed to create template.")
 
 
-@app.put("/api/template/{template_name}")
+@app.put("/api/template")
 async def handle_update_template(
-    template_name: str,
     template_data: PromptTemplateCreate,
     client_id: str = Depends(get_current_client_id)
 ):
@@ -577,7 +580,6 @@ async def handle_update_template(
     for backward compatibility.
     
     Args:
-        template_name (str): Name of the template to update
         template_data (PromptTemplateCreate): Updated template data containing:
             - name (str): Template name (should match template_name)
             - prompt (str): Updated template text
@@ -589,7 +591,6 @@ async def handle_update_template(
             ```json
             {
                 "name": "template_name",
-                "version": 2,
                 "tenant_fields": ["var1", "var2"],
                 "updated_at": "2024-01-01T12:00:00Z"
             }
@@ -602,7 +603,7 @@ async def handle_update_template(
             - 500: Internal server error during update
             
     Example:
-        PUT /api/template/customer_service
+        PUT /api/template
         ```json
         {
             "name": "customer_service",
@@ -611,21 +612,19 @@ async def handle_update_template(
         }
         ```
     """
-    info(f"Updating prompt template '{template_name}' for client: {client_id}", "[Template]")
+    info(f"Updating prompt template '{template_data.name}' for client: {client_id}", "[Template]")
     try:
-        template = await update_prompt_template(template_name, template_data)
-        info(f"Template '{template_name}' updated successfully to version {template.version}", "[Template]")
+        template = await update_prompt_template(template_data.name, template_data)
+        info(f"Template '{template_data.name}' updated successfully", "[Template]")
         return {
             "name": template.name,
-            "version": template.version,
-            "tenant_fields": template.tenant_fields,
-            "updated_at": template.updated_at
+            "tenant_fields": template.tenant_fields
         }
     except ValueError as e:
-        warning(f"Template '{template_name}' not found for update: {e}", "[Template]")
+        warning(f"Template '{template_data.name}' not found for update: {e}", "[Template]")
         raise HTTPException(status_code=404, detail=str(e)) # 404 Not Found
     except Exception as e:
-        error(f"Error updating template '{template_name}' at line {e.__traceback__.tb_lineno}: {e}", "[Template]")
+        error(f"Error updating template '{template_data.name}' at line {e.__traceback__.tb_lineno}: {e}", "[Template]")
         raise HTTPException(status_code=500, detail="Failed to update template.")
 
 

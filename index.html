@@ -13,56 +13,55 @@
     <div class="container">
         <header>
             <h1>🧠 AI API Center – Unified Agent Platform</h1>
-            <p class="subtitle">A modular, extensible backend platform for configuring, deploying, and managing AI agents with model selection, custom RAG, tool integrations, and fine-grained parameter control.</p>
+            <p class="subtitle">A modular, extensible backend platform for interacting with multiple AI providers through a single, unified interface. It's designed to abstract the complexities of various LLM providers, offering a consistent API for text generation and conversational chat.</p>
         </header>
 
         <main>
             <section id="features">
-                <h2>🧩 Key Features</h2>
+                <h2>🔑 Key Features</h2>
                 <div class="feature-grid">
-                    <div class="feature-item">✅ Model Selection</div>
-                    <div class="feature-item">✅ Custom RAG</div>
-                    <div class="feature-item">✅ Agent Builder</div>
-                    <div class="feature-item">✅ System Prompt Generalizer</div>
-                    <div class="feature-item">✅ Webhook & Tool Integrations</div>
-                    <div class="feature-item">✅ Logging & Analytics UI</div>
+                    <div class="feature-item">⚡ Multi-Provider Support</div>
+                    <div class="feature-item">📡 Streaming Responses (SSE)</div>
+                    <div class="feature-item">💬 Conversational Chat</div>
+                    <div class="feature-item">📝 Prompt Templating</div>
+                    <div class="feature-item">🔐 Authentication & Security</div>
+                    <div class="feature-item">📊 Request Logging</div>
                 </div>
             </section>
 
             <section id="tech-stack">
-                <h2>🏗️ Tech Stack</h2>
+                <h2>🛠️ Tech Stack</h2>
                 <div class="tech-grid">
-                    <div class="tech-item">Node.js (Express/Fastify)</div>
-                    <div class="tech-item">Python</div>
-                    <div class="tech-item">React</div>
-                    <div class="tech-item">Pinecone / Weaviate</div>
-                    <div class="tech-item">OpenAI / Gemini / DeepSeek</div>
-                    <div class="tech-item">JWT / API Keys</div>
-                    <div class="tech-item">PostgreSQL / Supabase</div>
+                    <div class="tech-item">Python (FastAPI)</div>
+                    <div class="tech-item">PostgreSQL (SQLAlchemy)</div>
+                    <div class="tech-item">JWT & Passlib</div>
+                    <div class="tech-item">OpenAI / Google / Anthropic / DeepSeek</div>
+                    <div class="tech-item">Jinja2</div>
                 </div>
             </section>
 
             <section id="project-structure">
-                <h2>📦 Project Structure (Planned)</h2>
-                <pre><code>ai-api-center/
-├── backend/                # Node.js server
-│   ├── models/             # Agent, Tool, RAG, Model Configs
-│   ├── routes/             # API endpoints
-│   ├── services/           # Agent execution logic
-│   ├── logs/               # Prompt/response logging
-│   └── config/             # Environment, vendors
-├── frontend/               # React admin + embed UI
-├── docs/                   # OpenAPI spec, architecture diagrams
-├── scripts/                # Dev utilities
+                <h2>🏗️ Project Structure</h2>
+                <pre><code>unified-ai-api/
+├── app/                     # Main FastAPI application
+│   ├── auth/                # Authentication (JWT, passwords, middleware)
+│   ├── DB_connection/       # Database managers (clients, chats, API keys, etc.)
+│   ├── handlers/            # Handlers for each AI provider
+│   ├── models/              # Pydantic and SQLAlchemy models
+│   ├── routers/             # Request dispatcher
+│   ├── utils/               # Utility modules (e.g., logger)
+│   ├── root_prompt.txt      # Optional root prompt template
+│   └── server.py            # FastAPI server entrypoint
+├── tests/                   # Unit and integration tests
+├── requirements.txt         # Python dependencies
 └── README.md
                 </code></pre>
             </section>
 
-            <section id="live-demo">
-                <h2>Live Demo & Source Code</h2>
-                <p>A live demo of the AI API Center will be available here soon. You can access the project's source code from the button below.</p>
+            <section id="source-code">
+                <h2>📄 Source Code</h2>
+                <p>You can access the project's source code on GitHub via the button below.</p>
                 <div class="demo-buttons">
-                    <a href="#" class="btn disabled">Live Demo (Coming Soon)</a>
                     <a href="https://github.com/LordOf11Month/AI_API_Project" target="_blank" rel="noopener noreferrer" class="btn">Source Code (GitHub)</a>
                 </div>
             </section>
